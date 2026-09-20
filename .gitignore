@@ -1,0 +1,12 @@
+.venv/
+build/
+release/
+dist/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.spec
+*.egg-info/
+logs/
+config/oracle_private_config.py
+config/report_config.json

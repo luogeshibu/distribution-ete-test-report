@@ -1,0 +1,29 @@
+[
+  {
+    "table": "13566",
+    "kind": "YX",
+    "addr": 13560,
+    "desc": "RMU 33661 开关位置",
+    "station_id": "ABS",
+    "device_type": "switch",
+    "selected": true
+  },
+  {
+    "table": "13566",
+    "kind": "YC",
+    "addr": 13561,
+    "desc": "RMU 33661 A相电流",
+    "station_id": "ABS",
+    "device_type": "measurement",
+    "selected": true
+  },
+  {
+    "table": "13566",
+    "kind": "YK",
+    "addr": 13579,
+    "desc": "RMU 33661 分闸命令",
+    "station_id": "ABS",
+    "device_type": "switch",
+    "selected": true
+  }
+]

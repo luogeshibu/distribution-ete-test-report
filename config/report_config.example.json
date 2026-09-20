@@ -1,0 +1,18 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8899,
+    "template": "distribution_report.html"
+  },
+  "oracle": {
+    "host": "",
+    "port": 1521,
+    "service": "",
+    "dsn": "",
+    "user": "",
+    "password": ""
+  },
+  "security": {
+    "print_password": "NARI"
+  }
+}
