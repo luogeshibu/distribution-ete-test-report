@@ -5,18 +5,32 @@ Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $python = Join-Path $projectRoot ".venv\Scripts\python.exe"
-$pyinstaller = Join-Path $projectRoot ".venv\Scripts\pyinstaller.exe"
 $setupScript = Join-Path $projectRoot "scripts\setup.ps1"
 
 if (-not (Test-Path -LiteralPath $python)) { & $setupScript }
-if (-not (Test-Path -LiteralPath $pyinstaller)) { & $python -m pip install pyinstaller }
+# Avoid invoking pyinstaller.exe directly. On managed Windows systems the
+# generated console launcher can be blocked by Code Integrity / Smart App Control,
+# while the same installed module remains runnable through the trusted Python host.
+# Detect PyInstaller without importing it.  A failed native command that writes a
+# traceback to stderr can become a terminating NativeCommandError when
+# $ErrorActionPreference is Stop, so use importlib.find_spec() instead.
+$pyInstallerAvailable = (& $python -c "import importlib.util; print('1' if importlib.util.find_spec('PyInstaller') else '0')").Trim()
+if ($LASTEXITCODE -ne 0) { throw "Failed to inspect the Python environment for PyInstaller." }
+if ($pyInstallerAvailable -ne "1") {
+    Write-Host "PyInstaller is not installed in .venv; installing it now..." -ForegroundColor Yellow
+    & $python -m pip install pyinstaller
+    if ($LASTEXITCODE -ne 0) { throw "Failed to install PyInstaller." }
+}
+
+& $python -m PyInstaller --version
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller module is unavailable." }
 
 $version = (Get-Content (Join-Path $projectRoot "VERSION") -Raw).Trim()
 if ([string]::IsNullOrWhiteSpace($version)) { throw "VERSION is empty." }
 
 $releaseRoot = Join-Path $projectRoot $OutputDirectory
 $work = Join-Path $releaseRoot "_build"
-$packageName = "Distribution-Signal-Verifier-v$version"
+$packageName = "distribution-ete-test-report-v$version"
 $package = Join-Path $releaseRoot $packageName
 $zip = Join-Path $releaseRoot ("{0}-release.zip" -f $packageName)
 
@@ -40,9 +54,11 @@ if ($LASTEXITCODE -ne 0) { throw "Oracle runtime dependencies are incomplete. Ru
 # Build a standalone Windows executable. python-oracledb thin mode loads
 # cryptography dynamically for authentication, so collect both packages and
 # their runtime dependencies explicitly.
-& $pyinstaller --noconfirm --clean --onefile --name "DistributionSignalVerifier" `
+& $python -m PyInstaller --noconfirm --clean --onefile --name "DistributionETETestReport" `
     --paths (Join-Path $projectRoot "src") `
     --add-data ((Join-Path $projectRoot "web\distribution_report.html") + ";.") `
+    --add-data ((Join-Path $projectRoot "web\history.html") + ";.") `
+    --add-data ((Join-Path $projectRoot "web\dashboard.html") + ";.") `
     --hidden-import getpass `
     --collect-all oracledb `
     --collect-all cryptography `
@@ -55,7 +71,7 @@ if ($LASTEXITCODE -ne 0) { throw "Oracle runtime dependencies are incomplete. Ru
     (Join-Path $projectRoot "src\distribution_signal_verifier\distribution_report_launcher.py")
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed." }
 
-$exeSource = Join-Path $work "bin\DistributionSignalVerifier.exe"
+$exeSource = Join-Path $work "bin\DistributionETETestReport.exe"
 if (-not (Test-Path -LiteralPath $exeSource)) { throw "Build completed but executable was not produced: $exeSource" }
 Copy-Item -LiteralPath $exeSource -Destination $package
 
@@ -85,6 +101,15 @@ try {
 Set-Content -LiteralPath (Join-Path $package "VERSION") -Value $version -Encoding ASCII
 Copy-Item -LiteralPath (Join-Path $projectRoot "docs\DEPLOYMENT.md") -Destination (Join-Path $package "README.txt")
 New-Item -ItemType Directory -Force -Path (Join-Path $package "logs") | Out-Null
+# Durable report data always stays below the program root.  These directories
+# are intentionally empty in a new release package; upgrade/copy operations
+# must preserve an existing data directory.
+New-Item -ItemType Directory -Force -Path `
+    (Join-Path $package "data\database"), `
+    (Join-Path $package "data\reports"), `
+    (Join-Path $package "data\summary_reports"), `
+    (Join-Path $package "data\backup\database") | Out-Null
+Set-Content -LiteralPath (Join-Path $package "data\README.txt") -Value "Persistent ETE report data. Preserve this directory during upgrades." -Encoding UTF8
 
 Compress-Archive -Path $package -DestinationPath $zip -Force
 if (-not (Test-Path -LiteralPath $zip)) { throw "Release ZIP was not created." }

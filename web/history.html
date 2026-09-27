@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>配网 ETE 历史报表</title>
+<style>
+:root{--bg:#f4f7f6;--card:#fff;--line:#d9e2df;--text:#1f2d29;--muted:#667570;--accent:#0b6b55;--accent2:#e9f5f1;--bad:#b42318;--draft:#9a6700;--draft-bg:#fff4ce;--shadow:0 4px 18px rgba(17,49,41,.07)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI","Microsoft YaHei",Arial,sans-serif;font-size:14px}.topbar{height:64px;background:#123f34;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;box-shadow:var(--shadow)}.topbar h1{font-size:19px;margin:0;font-weight:650}.topbar .sub{font-size:12px;opacity:.75;margin-top:3px}.topbar a{color:#fff;text-decoration:none;border:1px solid rgba(255,255,255,.4);padding:8px 14px;border-radius:7px}.topnav{display:flex;gap:8px}.wrap{max-width:1580px;margin:22px auto;padding:0 18px}.card{background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:18px;margin-bottom:16px}.filters{display:grid;grid-template-columns:repeat(8,minmax(120px,1fr));gap:12px;align-items:end}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}.field input,.field select{width:100%;height:36px;border:1px solid #cbd7d3;border-radius:6px;padding:0 9px;background:#fff}.actions{display:flex;gap:8px}.btn{height:36px;border:1px solid #b9cbc5;border-radius:6px;background:#fff;padding:0 14px;cursor:pointer}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.summary{display:flex;justify-content:space-between;align-items:center;margin:3px 0 12px;color:var(--muted)}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px}table{border-collapse:collapse;width:100%;min-width:1450px;background:#fff}th,td{border-bottom:1px solid #e4ebe8;padding:9px 10px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#edf5f2;color:#314a43;font-size:12px;white-space:nowrap}tr:hover td{background:#fbfdfc}.devices{display:flex;flex-direction:column;gap:4px}.device{font-weight:600}.hier{font-size:12px;color:var(--muted)}.tag{display:inline-block;padding:2px 7px;border-radius:999px;background:var(--accent2);color:var(--accent);font-size:12px;white-space:nowrap}.tag.fail{background:#feeceb;color:var(--bad)}.tag.empty{background:#f1f3f2;color:#6b7773}.tag.draft{background:var(--draft-bg);color:var(--draft)}.op{display:flex;flex-wrap:wrap;gap:6px}.op a,.op button{font:inherit;color:var(--accent);text-decoration:none;border:1px solid #c5d8d1;border-radius:5px;padding:4px 7px;white-space:nowrap;background:#fff;cursor:pointer}.op a.continue{background:var(--accent);border-color:var(--accent);color:#fff}.op button.pdf-action{background:#f7fbfa}.op button:disabled{opacity:.55;cursor:wait}.action-msg{margin-right:12px;color:var(--accent)}.action-msg.error{color:var(--bad)}.empty{text-align:center;padding:34px;color:var(--muted)}.error{color:var(--bad)}@media(max-width:1100px){.filters{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div><h1>配网设备信号端到端测试 · 历史报表</h1><div class="sub">Distribution ETE Test Report · Central Archive</div></div>
+  <div class="topnav"><a href="/?network=distribution">ETE 测试</a><a href="/dashboard">测试总览</a></div>
+</header>
+<main class="wrap">
+  <section class="card">
+    <div class="filters">
+      <div class="field"><label>调试日期 From</label><input type="date" id="date-from"></div>
+      <div class="field"><label>调试日期 To</label><input type="date" id="date-to"></div>
+      <div class="field"><label>变电站</label><input id="substation" placeholder="例如 EEH"></div>
+      <div class="field"><label>馈线</label><input id="feeder" placeholder="例如 AH333"></div>
+      <div class="field"><label>设备</label><input id="device" placeholder="RMU / ADMS GSS FID"></div>
+      <div class="field"><label>测试负责人</label><input id="lead" placeholder="姓名"></div>
+      <div class="field"><label>总评</label><select id="verdict"><option value="">全部</option><option value="pass">通过 / Pass</option><option value="conditional">Pass with comments</option><option value="fail">不通过 / Fail</option></select></div>
+      <div class="field"><label>状态</label><select id="status"><option value="">全部</option><option value="draft">草稿 / 未完成</option><option value="final">正式 / 已完成</option></select></div>
+    </div>
+    <div class="actions" style="margin-top:14px"><button class="btn primary" id="search">查询</button><button class="btn" id="reset">重置</button></div>
+  </section>
+  <section class="card">
+    <div class="summary"><span id="count">正在加载…</span><span><span id="action-msg" class="action-msg"></span>数据来自服务端持久化目录 data/</span></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>最后保存时间</th><th>状态</th><th>设备层级 / 设备</th><th>测试负责人</th><th>参测人员</th><th>总评</th><th>报告编号</th><th>版本</th><th>操作</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="9" class="empty">正在加载…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function verdict(v){if(v==='pass')return '<span class="tag">通过 / Pass</span>';if(v==='conditional')return '<span class="tag">Pass with comments</span>';if(v==='fail')return '<span class="tag fail">不通过 / Fail</span>';return '<span class="tag empty">—</span>'}
+function statusTag(x){return Number(x.is_draft)===1?'<span class="tag draft">草稿 / 未完成</span>':'<span class="tag">正式 / 已完成</span>'}
+function hierarchy(d){const h=[d.subcontrolarea_name,d.substation_name,d.feeder_name].filter(Boolean).join(' / ');return `<div class="device">${esc(d.display_name||d.rmu_name||'—')}</div><div class="hier">${esc(h||'—')}</div>`}
+function params(){const p=new URLSearchParams();[['date_from','date-from'],['date_to','date-to'],['substation','substation'],['feeder','feeder'],['device','device'],['lead','lead'],['verdict','verdict'],['status','status']].forEach(([k,id])=>{const v=$(id).value.trim();if(v)p.set(k,v)});return p}
+function continueUrl(x,devices){const p=new URLSearchParams();p.set('network','distribution');const names=devices.map(d=>String(d.rmu_name||'').trim()).filter(Boolean);if(names.length)p.set('rmu',names.join(','));p.set('resume',x.report_uuid);return '/?'+p.toString()}
+function setActionMessage(message,isError=false){const el=$('action-msg');el.textContent=message||'';el.classList.toggle('error',!!isError)}
+async function generatePdf(reportUuid,button){if(!reportUuid||button.disabled)return;const oldText=button.textContent;button.disabled=true;button.textContent='生成中…';setActionMessage('正在根据当前历史快照生成 PDF…');try{const r=await fetch(`/api/reports/${encodeURIComponent(reportUuid)}/generate-pdf`,{method:'POST'});let data={};try{data=await r.json()}catch(e){}if(!r.ok||data.ok===false)throw new Error(data.error||'PDF 生成失败');setActionMessage(data.is_draft?'PDF 已生成，记录仍保持“草稿 / 未完成”状态。':'PDF 已生成。');await load()}catch(e){setActionMessage(e.message||String(e),true);button.disabled=false;button.textContent=oldText}}
+async function load(){const body=$('rows');body.innerHTML='<tr><td colspan="9" class="empty">正在加载…</td></tr>';try{const r=await fetch('/api/reports?'+params().toString(),{cache:'no-store'});const data=await r.json();if(!r.ok||data.ok===false)throw new Error(data.error||'查询失败');const items=Array.isArray(data.items)?data.items:[];$('count').textContent=`共 ${items.length} 份历史记录`;if(!items.length){body.innerHTML='<tr><td colspan="9" class="empty">没有匹配的历史报表</td></tr>';return}body.innerHTML=items.map(x=>{const devices=Array.isArray(x.devices)?x.devices:[];const deviceHtml=devices.length?`<div class="devices">${devices.map(hierarchy).join('')}</div>`:'—';const id=encodeURIComponent(x.report_uuid);const view=`/api/reports/${id}/view`;const pdf=x.pdf_available?`<a target="_blank" href="${view}">查看 PDF</a><a href="/api/reports/${id}/download?format=pdf">下载 PDF</a><button type="button" class="pdf-action" data-report="${id}">重新生成 PDF</button>`:`<button type="button" class="pdf-action" data-report="${id}">生成 PDF</button>`;const resume=Number(x.is_draft)===1?`<a class="continue" href="${continueUrl(x,devices)}">继续测试</a>`:'';const when=x.updated_at||x.created_at||'';return `<tr><td>${esc(when)}</td><td>${statusTag(x)}</td><td>${deviceHtml}</td><td>${esc(x.lead||'—')}</td><td>${esc(x.testers||'—')}</td><td>${verdict(x.verdict_summary)}</td><td>${esc(x.report_no||'—')}</td><td>${esc(x.software_version||'—')}</td><td><div class="op">${resume}<a target="_blank" href="${view}">查看</a>${pdf}<a href="/api/reports/${id}/download?format=html">下载 HTML</a><a href="/api/reports/${id}/download?format=json">下载 JSON</a></div></td></tr>`}).join('')}catch(e){$('count').innerHTML='<span class="error">历史报表查询失败</span>';body.innerHTML=`<tr><td colspan="9" class="empty error">${esc(e.message||e)}</td></tr>`}}
+$('rows').addEventListener('click',e=>{const button=e.target.closest('button.pdf-action[data-report]');if(!button)return;generatePdf(decodeURIComponent(button.dataset.report||''),button)});
+$('search').onclick=load;$('reset').onclick=()=>{document.querySelectorAll('.filters input').forEach(x=>x.value='');document.querySelectorAll('.filters select').forEach(x=>x.value='');load()};document.querySelectorAll('.filters input,.filters select').forEach(x=>x.addEventListener('keydown',e=>{if(e.key==='Enter')load()}));load();
+</script>
+</body></html>

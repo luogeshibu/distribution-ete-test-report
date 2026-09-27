@@ -130,3 +130,28 @@ python -m unittest discover -v
 ```
 
 确认 `34661` 能查到 RMU 映射、50 个三遥点，并确认报告编号、表号、SMART、NOP 和 IEC-104 信息正确。
+
+## Central ETE report archive (v1.2.29+)
+
+The service keeps persistent report data under the same program root:
+
+```text
+distribution-ete-test-report/
+├─ data/
+│  ├─ database/ete_reports.db
+│  ├─ reports/YYYY/MM/DD/<report_uuid>/
+│  └─ backup/database/
+└─ ...program files...
+```
+
+All ETE teams should access the same central HTTP service. Browser clients do not open the SQLite file directly. SQLite uses WAL mode and per-request connections for concurrent archive/list operations.
+
+When upgrading program files, preserve `data/` and `config/report_config.json`. The database schema is migrated in place; before future schema migrations the service automatically creates a database backup under `data/backup/database/`.
+
+The formal **Print / PDF** action first sends a frozen report snapshot to the service. The server always stores JSON + HTML. When local Microsoft Edge / Google Chrome / Chromium is available on the service computer, it also creates `report.pdf`. After the archive succeeds, the browser's normal local print dialog opens.
+
+Historical reports are available at:
+
+```text
+http://<server>:8899/history
+```

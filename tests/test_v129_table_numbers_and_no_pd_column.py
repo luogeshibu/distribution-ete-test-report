@@ -3,13 +3,11 @@ from pathlib import Path
 from distribution_signal_verifier.distribution_signal_verifier import build_distribution_point_sql, normalize_signal
 
 
-def test_three_remote_source_table_numbers_are_returned():
+def test_supplied_sql_does_not_inject_report_source_table_numbers():
     sql, _ = build_distribution_point_sql([123])
-    assert "13560 AS source_table_no" in sql
-    assert "'Analog Measurement', 13561, 2" in sql
-    assert "'Command', 13579, 3" in sql
-    assert "p.source_table_no AS table_no" in sql
-    assert "SELECT combined_id, rmu_name, point_type, table_no" in sql
+    assert "13560 AS source_table_no" not in sql
+    assert "13561" not in sql
+    assert "13579" not in sql
 
 
 def test_normalized_signal_uses_returned_table_number_not_generic_three_remote():

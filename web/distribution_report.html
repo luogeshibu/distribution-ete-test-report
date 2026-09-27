@@ -193,6 +193,7 @@ table.points th {
 }
 table.points tr:hover td { background: #fafcfb; }
 table.points tr.selected td { background: #f3faf7; }
+.rmu-remove-button { white-space: nowrap; padding: .28rem .55rem; }
 .mono { font-family: var(--mono); font-size: .76rem; }
 .desc { max-width: 420px; word-break: break-word; }
 select.compact, input.compact {
@@ -589,6 +590,61 @@ input.note { min-width: 100px; }
   #env h3 { margin: 7mm 0 4mm; font-size: 11pt; line-height: 1.35; }
   .channel-table { margin: 1mm 0 5mm; font-size: 10pt; }
   .channel-table th, .channel-table td { padding: 2.3mm 2mm; line-height: 1.35; }
+
+  /* v1.2.23: print-only RMU summary table uses dedicated widths.
+     Do not reuse the signal-point nth-child widths, otherwise the nine
+     equipment columns collide in A4 portrait output. */
+  #print-selected-rmu-wrap { width: 100%; margin: 1mm 0 4mm; }
+  #print-selected-rmu-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse;
+    font-size: 7.4pt !important;
+    line-height: 1.18 !important;
+  }
+  #print-selected-rmu-table col.col-no       { width: 4.5%; }
+  #print-selected-rmu-table col.col-rmu      { width: 27.5%; }
+  #print-selected-rmu-table col.col-type     { width: 7.5%; }
+  #print-selected-rmu-table col.col-smart    { width: 8.0%; }
+  #print-selected-rmu-table col.col-nop      { width: 6.0%; }
+  #print-selected-rmu-table col.col-location { width: 14.0%; }
+  #print-selected-rmu-table col.col-ip       { width: 13.5%; }
+  #print-selected-rmu-table col.col-protocol { width: 9.5%; }
+  #print-selected-rmu-table col.col-verdict  { width: 9.5%; }
+  #print-selected-rmu-table th,
+  #print-selected-rmu-table td {
+    box-sizing: border-box;
+    padding: 1.5mm 1.1mm !important;
+    vertical-align: middle;
+    white-space: normal !important;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    hyphens: none;
+    border-bottom: 0.2mm solid #d6dde1;
+  }
+  #print-selected-rmu-table th {
+    font-size: 7.1pt !important;
+    font-weight: 700;
+    text-align: left;
+  }
+  #print-selected-rmu-table th:nth-child(1),
+  #print-selected-rmu-table td:nth-child(1),
+  #print-selected-rmu-table th:nth-child(3),
+  #print-selected-rmu-table td:nth-child(3),
+  #print-selected-rmu-table th:nth-child(4),
+  #print-selected-rmu-table td:nth-child(4),
+  #print-selected-rmu-table th:nth-child(5),
+  #print-selected-rmu-table td:nth-child(5),
+  #print-selected-rmu-table th:nth-child(8),
+  #print-selected-rmu-table td:nth-child(8),
+  #print-selected-rmu-table th:nth-child(9),
+  #print-selected-rmu-table td:nth-child(9) {
+    text-align: center;
+  }
+  #print-selected-rmu-table td:nth-child(7) {
+    white-space: nowrap !important;
+    overflow-wrap: normal;
+  }
   #stats { break-inside: avoid; margin-top: 5mm; }
   #points-panel h2 { margin-bottom: 7mm; }
   #points-panel { page-break-before: always; break-before: page; padding-top: 5mm; }
@@ -644,6 +700,76 @@ input.note { min-width: 100px; }
 #channel-table tr:has([data-i18n="chPort"]),
 #channel-table tr:has([data-i18n="chNote"]) { display: none !important; }
 
+
+/* v1.2.28: PDF statistics use one summary table, one row per selected device. */
+.print-stats-root { display: none; }
+table.print-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 8.8pt;
+}
+table.print-stats-table th,
+table.print-stats-table td {
+  border: 0.25mm solid #cfd9d5;
+  padding: 2.2mm 1.8mm;
+  text-align: center;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+table.print-stats-table th {
+  background: #eef5f2;
+  font-weight: 650;
+}
+table.print-stats-table th:first-child,
+table.print-stats-table td:first-child {
+  text-align: left;
+  width: 23%;
+}
+table.print-stats-table td.value-pass { color: var(--pass); font-weight: 700; }
+table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
+@media print {
+  .print-stats-root { display: block !important; }
+  #stats .screen-only { display: none !important; }
+  table.print-stats-table th {
+    background: #eef5f2 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+.multi-rmu-stats { display:block; }
+.rmu-stat-group { margin: .65rem 0 1rem; padding-top: .25rem; border-top: 1px solid #dbe7e2; }
+.rmu-stat-group:first-child { border-top: 0; margin-top: 0; }
+.rmu-stat-group h3 { margin: .25rem 0 .55rem; font-size: .95rem; }
+.rmu-point-group-header td { font-weight: 800; background: #e8f3ef !important; border-top: 2px solid #0b7d5b !important; padding-top: .6rem !important; padding-bottom: .6rem !important; }
+/* v1.2.19: multi-RMU point lists are separate full-height blocks, not one nested scroll area. */
+.multi-rmu-point-groups { display: none; }
+.multi-rmu-point-groups.active { display: block; }
+.rmu-point-group { margin: .85rem 0 1.25rem; }
+.rmu-point-group:first-child { margin-top: 0; }
+.rmu-point-group-title {
+  margin: 0 0 .5rem;
+  padding: .5rem .65rem;
+  border-left: 4px solid var(--accent);
+  background: #eef8f4;
+  border-radius: 4px;
+  font-size: .92rem;
+  font-weight: 800;
+}
+.rmu-point-group .table-wrap {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+.rmu-point-group-empty { padding: .75rem; color: var(--muted); font-size: .82rem; }
+@media print {
+  .rmu-stat-group { break-inside: avoid; }
+  .rmu-point-group-header { break-after: avoid; page-break-after: avoid; }
+  .rmu-point-group { break-inside: auto; margin: 0 0 5mm; }
+  .rmu-point-group-title { break-after: avoid; page-break-after: avoid; background: #eef8f4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .rmu-point-group .table-wrap { overflow: visible !important; max-height: none !important; }
+}
 </style>
 </head>
 <body>
@@ -653,16 +779,20 @@ input.note { min-width: 100px; }
     <div class="sub" id="hdr-sub"></div>
   </div>
   <div class="hdr-right">
+    <div class="actions">
+      <button type="button" class="ghost" id="btn-home" data-i18n="btnHome">首页</button>
+    </div>
     <div class="lang-toggle" role="group" aria-label="Language">
       <button type="button" id="lang-zh" class="active">中文</button>
       <button type="button" id="lang-en">EN</button>
     </div>
     <div class="actions">
-      <button type="button" class="ghost" id="btn-save" data-i18n="btnSave">保存 JSON</button>
-      <button type="button" class="ghost" id="btn-load" data-i18n="btnLoad">加载 JSON</button>
+      <button type="button" class="ghost" id="btn-reset-current" data-i18n="btnResetCurrent">重置当前测试</button>
+      <button type="button" class="ghost" id="btn-save" data-i18n="btnSave">保存当前报告</button>
+      <button type="button" class="ghost" id="btn-dashboard" data-i18n="btnDashboard">测试总览</button>
+      <button type="button" class="ghost" id="btn-history" data-i18n="btnHistory">历史报表</button>
       <button type="button" class="ghost" id="btn-print-draft" data-i18n="btnPrintDraft">打印 / Draft</button>
       <button type="button" class="ghost" id="btn-print" data-i18n="btnPrint">打印 / PDF</button>
-      <input type="file" id="file-load" accept="application/json,.json" hidden>
     </div>
   </div>
 </header>
@@ -688,7 +818,7 @@ input.note { min-width: 100px; }
   
   
   <section class="card no-print" id="distribution-rmu-map">
-    <h2><span data-live-zh="">1. 配网环网柜查询</span><span data-live-en="" style="display:none">1. Distribution RMU Search</span></h2>
+    <h2><span data-live-zh="">1. 配网设备查询</span><span data-live-en="" style="display:none">1. Distribution Device Search</span></h2>
     <form id="distribution-rmu-form" class="toolbar rmu-search-toolbar">
       <label class="field rmu-name-field" style="min-width:280px;flex:1">
         <span data-live-zh="">环网柜名称（RMU Name）</span><span data-live-en="" style="display:none">RMU Name</span>
@@ -729,9 +859,6 @@ input.note { min-width: 100px; }
   <section class="card" id="cover">
     <h2><span class="screen-section-no">1. </span><span data-i18n="secCover">报告封面</span></h2>
     <div class="grid-3">
-      <label class="field"><span data-i18n="metaReportId">报告编号</span><input id="meta-report_id"></label>
-      <label class="field"><span data-i18n="metaStation">变电站</span><input id="meta-station"></label>
-      <label class="field"><span data-i18n="metaStId">区域</span><input id="meta-st_id"></label>
       <label class="field"><span data-i18n="metaPhase">测试阶段</span>
         <select id="meta-phase"></select>
       </label>
@@ -740,9 +867,6 @@ input.note { min-width: 100px; }
       <label class="field"><span data-i18n="metaLead">测试负责人</span><input id="meta-lead"></label>
       <label class="field"><span data-i18n="metaTesters">参测人员</span><input id="meta-testers"></label>
       <label class="field"><span data-i18n="metaAdmsVer">主站 / 前置版本</span><input id="meta-adms_version"></label>
-      <label class="field"><span data-i18n="metaVerdict">结论（总评）</span>
-        <select id="meta-verdict"></select>
-      </label>
       <label class="field span-3" id="verdict-conditions-wrap">
         <span data-i18n="metaVerdictConditions">备注</span>
         <textarea id="meta-verdict_conditions" rows="3" data-i18n-placeholder="metaVerdictConditionsPh"></textarea>
@@ -750,9 +874,10 @@ input.note { min-width: 100px; }
     </div>
   </section>
 
-  <section class="card" id="env">
+  <section class="card print-only" id="env">
     <h2><span class="screen-section-no">2. </span><span class="print-section-no">1. </span><span data-i18n="secEnv">环境与前置条件</span></h2>
     <h3 data-i18n="secChannel">通道参数（IEC-104）</h3>
+    <div id="multi-rmu-channel-list"></div>
     <table class="channel-table" id="channel-table">
       <thead>
         <tr>
@@ -777,8 +902,9 @@ input.note { min-width: 100px; }
 
   <section class="card" id="stats">
     <h2><span class="screen-section-no">3. </span><span class="print-section-no">2. </span><span data-i18n="secStats">测试统计</span> <span class="hint" data-i18n="statsHint">（仅统计已勾选纳入测试的点）</span></h2>
-    <div class="kpi-row" id="kpi-row"></div>
-    <div class="status" id="stats-detail"></div>
+    <div class="kpi-row screen-only" id="kpi-row"></div>
+    <div class="status screen-only" id="stats-detail"></div>
+    <div class="print-only print-stats-root" id="print-stats-table"></div>
   </section>
 
   <section class="card" id="points-panel">
@@ -794,7 +920,8 @@ input.note { min-width: 100px; }
       <button type="button" id="btn-fail-tab" data-i18n="btnFailTab">一键全 Fail</button>
       <span class="hint" id="tab-count"></span>
     </div>
-    <div class="table-wrap">
+    <div id="multi-rmu-points-root" class="multi-rmu-point-groups"></div>
+    <div class="table-wrap" id="single-rmu-points-wrap">
       <table class="points">
         <thead>
           <tr>
@@ -892,6 +1019,23 @@ input.note { min-width: 100px; }
   const RAW = JSON.parse(document.getElementById("payload").textContent);
   const STORAGE_KEY = "distribution_rmu_e2e_report_search";
   const LANG_KEY = STORAGE_KEY + "_lang";
+  const SEARCH_PARAMS = new URLSearchParams(window.location.search);
+  const RESUME_REPORT_UUID = SEARCH_PARAMS.get("resume") || "";
+  const RMU_HANDOFF_TOKEN = SEARCH_PARAMS.get("handoff") || "";
+  const RMU_HANDOFF_PREFIX = "distribution_rmu_nav_handoff:";
+  // A normal page open is always a clean test session. Test results are never
+  // restored from persistent browser storage. The only browser-side exception
+  // is a one-time sessionStorage handoff used while adding/removing an RMU in
+  // the same open test. That handoff is deleted immediately after restoration.
+  // History -> Continue Test (?resume=...) remains the explicit server-side
+  // draft restoration path.
+  let currentReportUuid = RESUME_REPORT_UUID;
+  let currentReportFinalized = false;
+
+  function rememberReportUuid(reportUuid, finalized) {
+    currentReportUuid = reportUuid || "";
+    currentReportFinalized = !!finalized;
+  }
   const STATION = "配网";
   const ST_ID = "";
   const GENERATED_AT = "2026-09-19T18:44:40+03:00";
@@ -902,8 +1046,11 @@ input.note { min-width: 100px; }
       hdrTitle: "E2E 测试报告 · ADMS",
       hdrSub: (s, id, t) => `站 ${s} · ${id} · 生成 ${t}`,
       printTitle: "End-to-End Test Report（ADMS）",
-      btnSave: "保存 JSON",
-      btnLoad: "加载 JSON",
+      btnHome: "首页",
+      btnResetCurrent: "重置当前测试",
+      btnSave: "保存当前报告",
+      btnDashboard: "测试总览",
+      btnHistory: "历史报表",
       btnPrint: "打印 / PDF",
       btnPrintDraft: "打印 / Draft",
       printAuthTitle: "打印口令",
@@ -911,6 +1058,15 @@ input.note { min-width: 100px; }
       printAuthCancel: "取消",
       printAuthOk: "确定",
       printAuthBad: "口令错误",
+      toastArchived: "正式报告已保存到服务端",
+      toastDraftSaved: "当前报告已保存，可稍后继续测试",
+      toastDraftSaveFail: "当前报告保存失败",
+      toastResumeLoaded: "已恢复服务端草稿，可继续测试",
+      toastResumeFail: "草稿恢复失败",
+      toastArchiveFail: "服务端归档失败",
+      confirmResetCurrent: "确定重置当前测试吗？当前页面未保存的测试结果会被清空；已保存的历史报告不会删除。",
+      toastResetCurrent: "当前测试已重置",
+      confirmPrintWithoutArchive: "服务端归档失败，是否仍继续本地打印？",
       secCover: "报告封面",
       secEnv: "环境与前置条件",
       secStats: "测试统计",
@@ -1032,16 +1188,19 @@ input.note { min-width: 100px; }
       printLead: "测试负责人",
       printTesters: "参测人员",
       printChannels: "IEC 101 通道",
-      printAdms: "ADMS 版本",
       printVerdict: "总评",
       printConditions: "备注",
+      printStatsDevice: "设备",
     },
     en: {
       hdrTitle: "E2E Test Report · ADMS",
       hdrSub: (s, id, t) => `Station ${s} · ${id} · Generated ${t}`,
       printTitle: "End-to-End Test Report (ADMS)",
-      btnSave: "Save JSON",
-      btnLoad: "Load JSON",
+      btnHome: "Home",
+      btnResetCurrent: "Reset Current Test",
+      btnSave: "Save Current Report",
+      btnDashboard: "Dashboard",
+      btnHistory: "History",
       btnPrint: "Print / PDF",
       btnPrintDraft: "Print / Draft",
       printAuthTitle: "Print password",
@@ -1049,6 +1208,15 @@ input.note { min-width: 100px; }
       printAuthCancel: "Cancel",
       printAuthOk: "OK",
       printAuthBad: "Incorrect password",
+      toastArchived: "Final report archived on server",
+      toastDraftSaved: "Current report saved; you can continue later",
+      toastDraftSaveFail: "Failed to save current report",
+      toastResumeLoaded: "Server draft restored",
+      toastResumeFail: "Failed to restore draft",
+      toastArchiveFail: "Server archive failed",
+      confirmResetCurrent: "Reset the current test? Unsaved results on this page will be cleared; saved history will not be deleted.",
+      toastResetCurrent: "Current test reset",
+      confirmPrintWithoutArchive: "Server archive failed. Continue local printing?",
       secCover: "Cover",
       secEnv: "Environment Preconditions",
       secStats: "Statistics",
@@ -1170,9 +1338,9 @@ input.note { min-width: 100px; }
       printLead: "Test Lead",
       printTesters: "Testers",
       printChannels: "IEC 101 Channels",
-      printAdms: "ADMS Version",
       printVerdict: "Verdict",
       printConditions: "Comments",
+      printStatsDevice: "Device",
     },
   };
 
@@ -1229,6 +1397,55 @@ input.note { min-width: 100px; }
     env: JSON.parse(JSON.stringify(RAW.env_defaults)),
     points: RAW.points.map((p) => Object.assign({}, p)),
   };
+
+  // The distribution RMU selector is injected by a separate live script.
+  // `state` lives inside this report IIFE, so the live script cannot access it
+  // directly. Expose a narrow bridge for per-device overall results instead of
+  // relying on a non-existent global `state` variable. The getter stays valid
+  // even when freshClientState()/applyLoaded() replace the `state` object.
+  function ensureDeviceVerdicts() {
+    if (!state.meta || typeof state.meta !== "object") state.meta = {};
+    if (!state.meta.device_verdicts || typeof state.meta.device_verdicts !== "object" || Array.isArray(state.meta.device_verdicts)) {
+      state.meta.device_verdicts = {};
+    }
+    return state.meta.device_verdicts;
+  }
+  window.getDeviceVerdicts = () => ensureDeviceVerdicts();
+  window.setDeviceVerdict = (rmuName, value) => {
+    const key = String(rmuName || "").trim();
+    if (!key) return;
+    const verdicts = ensureDeviceVerdicts();
+    const normalized = String(value || "").trim();
+    if (normalized) verdicts[key] = normalized;
+    else delete verdicts[key];
+  };
+  const DISTRIBUTION_RMUS = Array.isArray(RAW.distribution_mappings) ? RAW.distribution_mappings : [];
+  function rmuIdentity(m) {
+    if (m && m.combined_id !== undefined && m.combined_id !== null && String(m.combined_id).trim()) {
+      return 'id:' + String(m.combined_id).trim();
+    }
+    if (m && String(m.adms_gss_fid || '').trim()) return 'fid:' + String(m.adms_gss_fid).trim();
+    return String((m && m.rmu_name) || '');
+  }
+  function pointRmuIdentity(p) {
+    if (p && p.combined_id !== undefined && p.combined_id !== null && String(p.combined_id).trim()) {
+      return 'id:' + String(p.combined_id).trim();
+    }
+    if (p && String(p.rmu_display_name || '').trim()) return 'fid:' + String(p.rmu_display_name).trim();
+    return String((p && p.rmu_name) || '');
+  }
+  function rmuGroups() {
+    if (!DISTRIBUTION_RMUS.length) return [];
+    return DISTRIBUTION_RMUS.map((m, index) => ({
+      key: rmuIdentity(m),
+      label: String(m.adms_gss_fid || m.rmu_name || ('RMU ' + (index + 1))),
+      index: index + 1,
+    }));
+  }
+  function pointsForRmu(group, points) {
+    const source = points || state.points;
+    return source.filter((p) => pointRmuIdentity(p) === group.key);
+  }
   // normalize phase/verdict to codes
   if (state.meta.phase) state.meta.phase = PHASE_MAP[state.meta.phase] || state.meta.phase;
   if (state.meta.verdict) state.meta.verdict = VERDICT_MAP[state.meta.verdict] || state.meta.verdict;
@@ -1341,10 +1558,9 @@ input.note { min-width: 100px; }
   }
 
   function persist() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(exportState()));
-      localStorage.setItem(LANG_KEY, lang);
-    } catch (e) { /* ignore */ }
+    // Browser storage is deliberately limited to UI preference only.
+    // Test selections/results/notes must never survive a normal reopen.
+    try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* ignore */ }
   }
 
   function exportState() {
@@ -1372,6 +1588,91 @@ input.note { min-width: 100px; }
       saved_at: new Date().toISOString(),
     };
   }
+
+  function prepareRmuNavigationHandoff() {
+    // Preserve the current in-memory test only across the intentional full-page
+    // navigation that adds/removes an RMU. This is not normal persistence: old
+    // handoffs are cleared first and the new handoff is consumed exactly once.
+    try {
+      const staleKeys = [];
+      for (let i = 0; i < sessionStorage.length; i += 1) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith(RMU_HANDOFF_PREFIX)) staleKeys.push(key);
+      }
+      staleKeys.forEach((key) => sessionStorage.removeItem(key));
+      const token = (window.crypto && typeof window.crypto.randomUUID === "function")
+        ? window.crypto.randomUUID()
+        : String(Date.now()) + "-" + Math.random().toString(16).slice(2);
+      const key = RMU_HANDOFF_PREFIX + token;
+      const payload = {
+        created_at: Date.now(),
+        state: exportState(),
+        report_uuid: currentReportUuid || "",
+        report_finalized: !!currentReportFinalized,
+        source_default_report_id: String(RAW.meta_defaults?.report_id || ""),
+        ui: {
+          active_tab: activeTab,
+          query: document.getElementById("q")?.value || "",
+          filter: document.getElementById("filter-sel")?.value || "all",
+        },
+      };
+      sessionStorage.setItem(key, JSON.stringify(payload));
+      return token;
+    } catch (error) {
+      console.error("prepare RMU navigation handoff failed", error);
+      return "";
+    }
+  }
+
+  function restoreRmuNavigationHandoff() {
+    if (!RMU_HANDOFF_TOKEN) return false;
+    const key = RMU_HANDOFF_PREFIX + RMU_HANDOFF_TOKEN;
+    let raw = "";
+    try {
+      raw = sessionStorage.getItem(key) || "";
+      // One-time handoff: remove before parsing/applying so reload cannot reuse it.
+      sessionStorage.removeItem(key);
+    } catch (error) {
+      console.error("read RMU navigation handoff failed", error);
+      return false;
+    }
+    if (!raw) return false;
+    try {
+      const payload = JSON.parse(raw);
+      if (!payload || typeof payload !== "object" || !payload.state) return false;
+      const ageMs = Date.now() - Number(payload.created_at || 0);
+      if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 10 * 60 * 1000) return false;
+      const savedReportId = String(payload.state?.meta?.report_id || "");
+      const sourceDefaultReportId = String(payload.source_default_report_id || "");
+      applyLoaded(payload.state);
+      // If the report number was still the old auto-generated default, use the
+      // new payload default so newly added RMUs also appear in the report IDs.
+      // A manually edited/custom report number is preserved as entered.
+      if (savedReportId && savedReportId === sourceDefaultReportId && RAW.meta_defaults?.report_id) {
+        state.meta.report_id = String(RAW.meta_defaults.report_id);
+      }
+      rememberReportUuid(payload.report_uuid || "", !!payload.report_finalized);
+      if (payload.ui && typeof payload.ui === "object") {
+        const nextTab = String(payload.ui.active_tab || "");
+        if (TABS.some((item) => item.id === nextTab)) activeTab = nextTab;
+        const q = document.getElementById("q");
+        if (q) q.value = String(payload.ui.query || "");
+        const filter = document.getElementById("filter-sel");
+        if (filter) filter.value = String(payload.ui.filter || "all");
+      }
+      const url = new URL(window.location.href);
+      url.searchParams.delete("handoff");
+      window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+      return true;
+    } catch (error) {
+      console.error("restore RMU navigation handoff failed", error);
+      return false;
+    }
+  }
+
+  // Narrow bridge used by the separately injected RMU selector. It can request
+  // a one-time state handoff without gaining direct access to the private state.
+  window.prepareRmuNavigationHandoff = prepareRmuNavigationHandoff;
 
   function applyLoaded(data) {
     if (!data || typeof data !== "object") return;
@@ -1435,7 +1736,25 @@ input.note { min-width: 100px; }
     state.meta.channel[side][key] = value;
   }
 
+  function renderDistributionChannels() {
+    const host = document.getElementById("multi-rmu-channel-list");
+    const legacy = document.getElementById("channel-table");
+    if (!host || !legacy) return;
+    const mappings = Array.isArray(DISTRIBUTION_RMUS) ? DISTRIBUTION_RMUS : [];
+    if (!mappings.length) { host.innerHTML = ""; legacy.style.display = "table"; return; }
+    legacy.style.display = "none";
+    const esc = (v) => escapeHtml(String(v == null ? "" : v));
+    const rows = mappings.map((m, i) =>
+      '<tr><td>' + (i + 1) + '</td><td>' + esc(m.adms_gss_fid || m.rmu_name) +
+      '</td><td>' + esc(m.protocol_name || 'IEC-104') + '</td><td>' + esc(m.ip || '') + '</td></tr>'
+    ).join('');
+    host.innerHTML = '<table class="channel-table multi-rmu-channel-table"><thead><tr>' +
+      '<th>序号</th><th>RMU名称</th><th>规约</th><th>通道标识</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
   function fillChannel() {
+    renderDistributionChannels();
     ensureChannel();
     const ch = state.meta.channel;
     const proto = document.getElementById("ch-protocol");
@@ -1512,32 +1831,43 @@ input.note { min-width: 100px; }
     const verdict = document.getElementById("meta-verdict");
     const phaseVal = state.meta.phase || "";
     const verdictVal = state.meta.verdict || "";
-    phase.innerHTML = "";
-    [
-      ["", "phaseUnset"],
-      ["field", "phaseField"],
-      ["commission", "phaseCommission"],
-      ["regression", "phaseRegression"],
-    ].forEach(([v, key]) => {
-      const o = document.createElement("option");
-      o.value = v;
-      o.textContent = t(key);
-      if (phaseVal === v) o.selected = true;
-      phase.appendChild(o);
-    });
-    verdict.innerHTML = "";
-    [
-      ["", "verdictUnset"],
-      ["pass", "verdictPass"],
-      ["conditional", "verdictConditional"],
-      ["fail", "verdictFail"],
-    ].forEach(([v, key]) => {
-      const o = document.createElement("option");
-      o.value = v;
-      o.textContent = t(key);
-      if (verdictVal === v) o.selected = true;
-      verdict.appendChild(o);
-    });
+
+    // The report-level verdict was intentionally removed from the cover when
+    // per-RMU overall results were introduced.  Keep this helper tolerant of
+    // that missing control: an exception here aborts init() and prevents all
+    // JavaScript-rendered sections (multi-RMU channel list, 3.x statistics,
+    // and 4.x point groups) from being rendered.
+    if (phase) {
+      phase.innerHTML = "";
+      [
+        ["", "phaseUnset"],
+        ["field", "phaseField"],
+        ["commission", "phaseCommission"],
+        ["regression", "phaseRegression"],
+      ].forEach(([v, key]) => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = t(key);
+        if (phaseVal === v) o.selected = true;
+        phase.appendChild(o);
+      });
+    }
+
+    if (verdict) {
+      verdict.innerHTML = "";
+      [
+        ["", "verdictUnset"],
+        ["pass", "verdictPass"],
+        ["conditional", "verdictConditional"],
+        ["fail", "verdictFail"],
+      ].forEach(([v, key]) => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = t(key);
+        if (verdictVal === v) o.selected = true;
+        verdict.appendChild(o);
+      });
+    }
   }
 
   function fillMeta() {
@@ -1599,22 +1929,15 @@ input.note { min-width: 100px; }
     const m = state.meta;
     const el = document.getElementById("print-meta");
     let html = [
-      [t("printReportId"), m.report_id],
-      [t("printStation"), m.station],
-      [t("printStId"), m.st_id],
       [t("printPhase"), phaseLabel(m.phase)],
       [t("printDates"), (m.date_from || "") + " ~ " + (m.date_to || "")],
       [t("printLead"), m.lead],
       [t("printTesters"), m.testers],
-      [t("printChannels"), channelPrintSummary()],
-      [t("printAdms"), m.adms_version],
-      [t("printVerdict"), verdictLabel(m.verdict)],
     ].map(([k, v]) => "<div><strong>" + k + ":</strong> " + escapeHtml(v || "") + "</div>").join("");
     el.innerHTML = html;
     const signMeta = document.getElementById("print-sign-meta");
     if (signMeta) {
       signMeta.innerHTML = [
-        [t("printStation"), m.station],
         [t("printReportId"), m.report_id],
         [t("printDates"), (m.date_from || "") + " ~ " + (m.date_to || "")],
       ].map(([k, v]) => "<div><strong>" + k + ":</strong> " + escapeHtml(v || "") + "</div>").join("");
@@ -1712,6 +2035,10 @@ input.note { min-width: 100px; }
     fillChannel();
   }
 
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
   function statsBucket(points) {
     const total = points.length;
     const selected = points.filter((p) => p.selected);
@@ -1741,26 +2068,96 @@ input.note { min-width: 100px; }
   }
 
   function updateStats() {
-    const up = statsBucket(state.points.filter((p) => p.direction === "up"));
-    const down = statsBucket(state.points.filter((p) => p.direction === "down"));
-    const all = statsBucket(state.points);
-    const items = [
-      { label: t("kpiPlanned"), value: all.planned },
-      { label: t("kpiTested"), value: all.tested },
-      { label: t("kpiUpCoverage"), value: up.coverage + " (" + up.testedFull + "/" + up.total + ")" },
-      { label: t("kpiDownCoverage"), value: down.coverage + " (" + down.testedFull + "/" + down.total + ")" },
-      { label: "Pass", value: all.pass, cls: "pass" },
-      { label: "Pass with comments", value: all.passComments, cls: "pass" },
-      { label: "Fail", value: all.fail, cls: "fail" },
-      { label: "Blocked", value: all.blocked },
-      { label: "N/A", value: all.na },
-      { label: t("kpiPassRate"), value: all.rate, cls: "pass" },
-    ];
-    document.getElementById("kpi-row").innerHTML = items.map((it) =>
-      '<div class="kpi ' + (it.cls || "") + '"><div class="label">' + it.label +
-      '</div><div class="value">' + it.value + "</div></div>"
-    ).join("");
-    document.getElementById("stats-detail").textContent = tf("statsDetail")(up, down);
+    const statsRoot = document.getElementById("kpi-row");
+    const detailRoot = document.getElementById("stats-detail");
+    const printRoot = document.getElementById("print-stats-table");
+    const groups = rmuGroups();
+
+    function statsItems(points) {
+      const up = statsBucket(points.filter((p) => p.direction === "up"));
+      const down = statsBucket(points.filter((p) => p.direction === "down"));
+      const all = statsBucket(points);
+      const items = [
+        { label: t("kpiPlanned"), value: all.planned },
+        { label: t("kpiTested"), value: all.tested },
+        { label: t("kpiUpCoverage"), value: up.coverage + " (" + up.testedFull + "/" + up.total + ")" },
+        { label: t("kpiDownCoverage"), value: down.coverage + " (" + down.testedFull + "/" + down.total + ")" },
+        { label: "Pass", value: all.pass, cls: "pass" },
+        { label: "Pass with comments", value: all.passComments, cls: "pass" },
+        { label: "Fail", value: all.fail, cls: "fail" },
+        { label: "Blocked", value: all.blocked },
+        { label: "N/A", value: all.na },
+        { label: t("kpiPassRate"), value: all.rate, cls: "pass" },
+      ];
+      return {up, down, all, items};
+    }
+
+    function printStatsSummaryTable(rows) {
+      const passClass = ' class="value-pass"';
+      const failClass = ' class="value-fail"';
+      const header = '<thead><tr>' +
+        '<th>' + escapeHtml(t("printStatsDevice")) + '</th>' +
+        '<th>' + escapeHtml(t("kpiPlanned")) + '</th>' +
+        '<th>' + escapeHtml(t("kpiTested")) + '</th>' +
+        '<th>' + escapeHtml(t("kpiUpCoverage")) + '</th>' +
+        '<th>' + escapeHtml(t("kpiDownCoverage")) + '</th>' +
+        '<th>Pass</th>' +
+        '<th>Pass with comments</th>' +
+        '<th>Fail</th>' +
+        '<th>Blocked</th>' +
+        '<th>N/A</th>' +
+        '<th>' + escapeHtml(t("kpiPassRate")) + '</th>' +
+      '</tr></thead>';
+      const body = '<tbody>' + rows.map((row) => {
+        const info = row.info;
+        return '<tr>' +
+          '<td>' + escapeHtml(row.label) + '</td>' +
+          '<td>' + escapeHtml(String(info.all.planned)) + '</td>' +
+          '<td>' + escapeHtml(String(info.all.tested)) + '</td>' +
+          '<td>' + escapeHtml(info.up.coverage + ' (' + info.up.testedFull + '/' + info.up.total + ')') + '</td>' +
+          '<td>' + escapeHtml(info.down.coverage + ' (' + info.down.testedFull + '/' + info.down.total + ')') + '</td>' +
+          '<td' + passClass + '>' + escapeHtml(String(info.all.pass)) + '</td>' +
+          '<td' + passClass + '>' + escapeHtml(String(info.all.passComments)) + '</td>' +
+          '<td' + failClass + '>' + escapeHtml(String(info.all.fail)) + '</td>' +
+          '<td>' + escapeHtml(String(info.all.blocked)) + '</td>' +
+          '<td>' + escapeHtml(String(info.all.na)) + '</td>' +
+          '<td' + passClass + '>' + escapeHtml(String(info.all.rate)) + '</td>' +
+        '</tr>';
+      }).join('') + '</tbody>';
+      return '<table class="print-stats-table">' + header + body + '</table>';
+    }
+
+    if (groups.length > 1) {
+      statsRoot.className = 'multi-rmu-stats screen-only';
+      statsRoot.innerHTML = groups.map((group) => {
+        const info = statsItems(pointsForRmu(group));
+        const cards = info.items.map((it) =>
+          '<div class="kpi ' + (it.cls || '') + '"><div class="label">' + it.label +
+          '</div><div class="value">' + it.value + '</div></div>'
+        ).join('');
+        return '<div class="rmu-stat-group"><h3>3.' + group.index + ' ' + escapeHtml(group.label) +
+          '</h3><div class="kpi-row">' + cards + '</div><div class="status">' +
+          escapeHtml(tf("statsDetail")(info.up, info.down)) + '</div></div>';
+      }).join('');
+      detailRoot.textContent = '';
+      printRoot.innerHTML = printStatsSummaryTable(groups.map((group) => ({
+        label: group.label,
+        info: statsItems(pointsForRmu(group)),
+      })));
+    } else {
+      statsRoot.className = 'kpi-row screen-only';
+      const info = statsItems(state.points);
+      statsRoot.innerHTML = info.items.map((it) =>
+        '<div class="kpi ' + (it.cls || '') + '"><div class="label">' + it.label +
+        '</div><div class="value">' + it.value + '</div></div>'
+      ).join('');
+      detailRoot.textContent = tf("statsDetail")(info.up, info.down);
+      const group = groups[0];
+      printRoot.innerHTML = printStatsSummaryTable([{
+        label: group ? group.label : t("dash"),
+        info,
+      }]);
+    }
     updatePrintMeta();
   }
 
@@ -1821,132 +2218,212 @@ input.note { min-width: 100px; }
       });
   }
 
+  function appendPointRow(tbody, p, printing) {
+    const tr = document.createElement("tr");
+    if (p.selected) tr.classList.add("selected");
+
+    const tdSel = document.createElement("td");
+    tdSel.className = "no-print";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = !!p.selected;
+    cb.addEventListener("change", () => {
+      p.selected = cb.checked;
+      persist();
+      updateStats();
+      tr.classList.toggle("selected", p.selected);
+    });
+    tdSel.appendChild(cb);
+
+    const tdKind = document.createElement("td");
+    tdKind.innerHTML =
+      '<span class="badge ' + p.kind + '">' + t("kind" + p.kind) + "</span>";
+    const tdTable = document.createElement("td");
+    tdTable.textContent = p.table;
+    const tdAddr = document.createElement("td");
+    tdAddr.className = "mono";
+    tdAddr.textContent = String(p.addr);
+    const tdDesc = document.createElement("td");
+    tdDesc.className = "desc";
+    tdDesc.textContent = p.desc;
+    const tdRecv = document.createElement("td");
+    const tdRes = document.createElement("td");
+    const tdNote = document.createElement("td");
+
+    if (printing) {
+      const recvLabel =
+        p.received === true ? t("yes") : p.received === false ? t("no") : t("dash");
+      tdRecv.textContent = recvLabel;
+      tdRes.textContent = p.result || t("dash");
+      tdNote.textContent = p.note || "";
+    } else {
+      const selRecv = document.createElement("select");
+      selRecv.className = "compact";
+      [
+        ["", t("receivedUnset")],
+        ["true", t("yes")],
+        ["false", t("no")],
+      ].forEach(([v, label]) => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = label;
+        const cur = p.received === true ? "true" : p.received === false ? "false" : "";
+        if (cur === v) o.selected = true;
+        selRecv.appendChild(o);
+      });
+      selRecv.addEventListener("change", () => {
+        p.received = selRecv.value === "" ? "" : selRecv.value === "true";
+        persist();
+      });
+      tdRecv.appendChild(selRecv);
+
+      const inNote = document.createElement("input");
+      inNote.className = "compact note";
+      inNote.value = p.note || "";
+      inNote.addEventListener("change", () => {
+        p.note = inNote.value;
+        persist();
+      });
+
+      const selRes = document.createElement("select");
+      selRes.className = "compact";
+      POINT_RESULTS.forEach((v) => {
+        const o = document.createElement("option");
+        o.value = v;
+        o.textContent = v || t("resultUnset");
+        if ((p.result || "") === v) o.selected = true;
+        selRes.appendChild(o);
+      });
+      selRes.addEventListener("change", () => {
+        p.result = selRes.value;
+        if (p.result && !p.selected) {
+          p.selected = true;
+          cb.checked = true;
+          tr.classList.add("selected");
+        }
+        if (p.result === "Pass" || p.result === "Pass with comments") {
+          p.received = true;
+          selRecv.value = "true";
+        }
+        persist();
+        updateStats();
+        if (p.result === "Pass with comments") {
+          inNote.focus();
+        }
+      });
+      tdRes.appendChild(selRes);
+      tdNote.appendChild(inNote);
+    }
+
+    [tdSel, tdKind, tdTable, tdAddr, tdDesc, tdRecv, tdRes, tdNote]
+      .forEach((td) => tr.appendChild(td));
+    tbody.appendChild(tr);
+  }
+
+  function appendPrintKindHeader(tbody, kind) {
+    const hr = document.createElement("tr");
+    hr.className = "print-kind-header";
+    const td = document.createElement("td");
+    // 打印时 Include 列隐藏，可见 7 列
+    td.colSpan = 7;
+    td.textContent = t("kind" + kind);
+    hr.appendChild(td);
+    tbody.appendChild(hr);
+  }
+
+  function renderMultiRmuPointTables(rows, groups, printing) {
+    const root = document.getElementById("multi-rmu-points-root");
+    const singleWrap = document.getElementById("single-rmu-points-wrap");
+    const legacyHead = singleWrap.querySelector("table.points thead");
+    root.innerHTML = "";
+    root.classList.add("active");
+    singleWrap.style.display = "none";
+
+    groups.forEach((group) => {
+      const groupRows = rows.filter((p) => pointRmuIdentity(p) === group.key);
+      const section = document.createElement("div");
+      section.className = "rmu-point-group";
+      section.dataset.rmu = group.key;
+
+      const title = document.createElement("h3");
+      title.className = "rmu-point-group-title";
+      if (printing) {
+        title.textContent = "4." + group.index + " " + group.label;
+      } else {
+        title.textContent = "4." + group.index + " " + group.label +
+          " · " + t("kind" + currentKind()) + " (" + groupRows.length + ")";
+      }
+      section.appendChild(title);
+
+      if (!groupRows.length) {
+        const empty = document.createElement("div");
+        empty.className = "rmu-point-group-empty";
+        empty.textContent = t("dash");
+        section.appendChild(empty);
+        root.appendChild(section);
+        return;
+      }
+
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      const table = document.createElement("table");
+      table.className = "points";
+      table.appendChild(legacyHead.cloneNode(true));
+      const tbody = document.createElement("tbody");
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      section.appendChild(wrap);
+
+      let lastKind = null;
+      groupRows.forEach((p) => {
+        if (printing && p.kind !== lastKind) {
+          lastKind = p.kind;
+          appendPrintKindHeader(tbody, p.kind);
+        }
+        appendPointRow(tbody, p, printing);
+      });
+      root.appendChild(section);
+    });
+  }
+
   function renderTable() {
     const q = (document.getElementById("q").value || "").trim().toLowerCase();
     const filter = document.getElementById("filter-sel").value;
     const printing = document.body.dataset.print === "1";
     const tbody = document.getElementById("tbody");
+    const multiRoot = document.getElementById("multi-rmu-points-root");
+    const singleWrap = document.getElementById("single-rmu-points-wrap");
     tbody.innerHTML = "";
     let shown = 0;
     const rows = printing
       ? printRows()
       : state.points.filter((p) => matchesFilter(p, q, filter));
 
-    let lastKind = null;
-    rows.forEach((p) => {
-      shown += 1;
-      if (printing && p.kind !== lastKind) {
-        lastKind = p.kind;
-        const hr = document.createElement("tr");
-        hr.className = "print-kind-header";
-        const td = document.createElement("td");
-        // 打印时 Include 列隐藏，可见 7 列
-        td.colSpan = 7;
-        td.textContent = t("kind" + p.kind);
-        hr.appendChild(td);
-        tbody.appendChild(hr);
-      }
-
-      const tr = document.createElement("tr");
-      if (p.selected) tr.classList.add("selected");
-
-      const tdSel = document.createElement("td");
-      tdSel.className = "no-print";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!p.selected;
-      cb.addEventListener("change", () => {
-        p.selected = cb.checked;
-        persist();
-        updateStats();
-        tr.classList.toggle("selected", p.selected);
-      });
-      tdSel.appendChild(cb);
-
-      const tdKind = document.createElement("td");
-      tdKind.innerHTML =
-        '<span class="badge ' + p.kind + '">' + t("kind" + p.kind) + "</span>";
-      const tdTable = document.createElement("td");
-      tdTable.textContent = p.table;
-      const tdAddr = document.createElement("td");
-      tdAddr.className = "mono";
-      tdAddr.textContent = String(p.addr);
-      const tdDesc = document.createElement("td");
-      tdDesc.className = "desc";
-      tdDesc.textContent = p.desc;
-      const tdRecv = document.createElement("td");
-      const tdRes = document.createElement("td");
-      const tdNote = document.createElement("td");
-
-      if (printing) {
-        const recvLabel =
-          p.received === true ? t("yes") : p.received === false ? t("no") : t("dash");
-        tdRecv.textContent = recvLabel;
-        tdRes.textContent = p.result || t("dash");
-        tdNote.textContent = p.note || "";
-      } else {
-        const selRecv = document.createElement("select");
-        selRecv.className = "compact";
-        [
-          ["", t("receivedUnset")],
-          ["true", t("yes")],
-          ["false", t("no")],
-        ].forEach(([v, label]) => {
-          const o = document.createElement("option");
-          o.value = v;
-          o.textContent = label;
-          const cur = p.received === true ? "true" : p.received === false ? "false" : "";
-          if (cur === v) o.selected = true;
-          selRecv.appendChild(o);
-        });
-        selRecv.addEventListener("change", () => {
-          p.received = selRecv.value === "" ? "" : selRecv.value === "true";
-          persist();
-        });
-        tdRecv.appendChild(selRecv);
-
-        const inNote = document.createElement("input");
-        inNote.className = "compact note";
-        inNote.value = p.note || "";
-        inNote.addEventListener("change", () => {
-          p.note = inNote.value;
-          persist();
-        });
-
-        const selRes = document.createElement("select");
-        selRes.className = "compact";
-        POINT_RESULTS.forEach((v) => {
-          const o = document.createElement("option");
-          o.value = v;
-          o.textContent = v || t("resultUnset");
-          if ((p.result || "") === v) o.selected = true;
-          selRes.appendChild(o);
-        });
-        selRes.addEventListener("change", () => {
-          p.result = selRes.value;
-          if (p.result && !p.selected) {
-            p.selected = true;
-            cb.checked = true;
-            tr.classList.add("selected");
-          }
-          if (p.result === "Pass" || p.result === "Pass with comments") {
-            p.received = true;
-            selRecv.value = "true";
-          }
-          persist();
-          updateStats();
-          if (p.result === "Pass with comments") {
-            inNote.focus();
-          }
-        });
-        tdRes.appendChild(selRes);
-        tdNote.appendChild(inNote);
-      }
-
-      [tdSel, tdKind, tdTable, tdAddr, tdDesc, tdRecv, tdRes, tdNote]
-        .forEach((td) => tr.appendChild(td));
-      tbody.appendChild(tr);
+    const groups = rmuGroups();
+    const groupIndex = new Map(groups.map((g) => [g.key, g]));
+    rows.sort((a, b) => {
+      if (groups.length <= 1) return 0;
+      const ga = groupIndex.get(pointRmuIdentity(a))?.index || 999;
+      const gb = groupIndex.get(pointRmuIdentity(b))?.index || 999;
+      return ga - gb;
     });
+    shown = rows.length;
+
+    if (groups.length > 1) {
+      renderMultiRmuPointTables(rows, groups, printing);
+    } else {
+      multiRoot.classList.remove("active");
+      multiRoot.innerHTML = "";
+      singleWrap.style.display = "";
+      let lastKind = null;
+      rows.forEach((p) => {
+        if (printing && p.kind !== lastKind) {
+          lastKind = p.kind;
+          appendPrintKindHeader(tbody, p.kind);
+        }
+        appendPointRow(tbody, p, printing);
+      });
+    }
 
     const totalKind = state.points.filter((p) => p.kind === currentKind()).length;
     const selKind = state.points.filter((p) => p.kind === currentKind() && p.selected).length;
@@ -2032,11 +2509,81 @@ input.note { min-width: 100px; }
     updateSignRole2Ui();
   }
 
-  function init() {
+  function freshClientState() {
+    state = {
+      station: RAW.station,
+      meta: JSON.parse(JSON.stringify(RAW.meta_defaults || {})),
+      env: JSON.parse(JSON.stringify(RAW.env_defaults || {})),
+      points: (RAW.points || []).map((p) => Object.assign({}, p)),
+    };
+    if (state.meta.phase) state.meta.phase = PHASE_MAP[state.meta.phase] || state.meta.phase;
+    if (state.meta.verdict) state.meta.verdict = VERDICT_MAP[state.meta.verdict] || state.meta.verdict;
+    ensureChannel();
+    ensureSignRole2();
+  }
+
+  function goHome() {
+    window.location.assign('/?network=distribution');
+  }
+
+  function resetCurrentTest() {
+    if (!window.confirm(t("confirmResetCurrent"))) return;
+    freshClientState();
+    rememberReportUuid("", false);
+    activeTab = "YX";
+    const q = document.getElementById("q");
+    if (q) q.value = "";
+    const filter = document.getElementById("filter-sel");
+    if (filter) filter.value = "all";
+    fillMeta();
+    fillChannel();
+    renderEnv();
+    renderTabs();
+    updateStats();
+    renderTable();
+    updatePrintMeta();
+    updateSignRole2Ui();
+    const url = new URL(window.location.href);
+    url.searchParams.delete("resume");
+    window.history.replaceState({}, "", url.pathname + (url.search ? url.search : ""));
+    persist();
+    toast(t("toastResetCurrent"));
+  }
+
+  async function restoreServerDraft() {
+    if (!RESUME_REPORT_UUID) return false;
     try {
-      const draft = localStorage.getItem(STORAGE_KEY);
-      if (draft) applyLoaded(JSON.parse(draft));
-    } catch (e) { /* ignore */ }
+      const response = await fetch(
+        "/api/reports/" + encodeURIComponent(RESUME_REPORT_UUID) + "/download?format=json",
+        {cache: "no-store"}
+      );
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const saved = await response.json();
+      applyLoaded(saved);
+      // The per-RMU overall-result controls are injected by the live server
+      // script.  A resumed archive is restored asynchronously, so refresh
+      // those controls only after the saved state has been applied.
+      if (typeof window.syncDeviceVerdicts === "function") window.syncDeviceVerdicts();
+      const status = saved && saved.archive ? String(saved.archive.status || "") : "";
+      rememberReportUuid(RESUME_REPORT_UUID, status === "final");
+      toast(t("toastResumeLoaded"));
+      return true;
+    } catch (error) {
+      console.error("restore server draft failed", error);
+      toast(t("toastResumeFail"));
+      return false;
+    }
+  }
+
+  async function init() {
+    // Purge any report-state cache left by v1.2.35 or older.  The new version
+    // never reads this key; only the separate language key remains persistent.
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
+    // Preserve in-progress values when the operator intentionally adds/removes
+    // an RMU. A normal open remains clean; server draft restore is still used
+    // only for History -> Continue Test.
+    const restoredByRmuHandoff = restoreRmuNavigationHandoff();
+    if (!restoredByRmuHandoff) await restoreServerDraft();
 
     applyStaticI18n();
     bindMeta();
@@ -2051,6 +2598,8 @@ input.note { min-width: 100px; }
 
     document.getElementById("lang-zh").onclick = () => setLang("zh");
     document.getElementById("lang-en").onclick = () => setLang("en");
+    document.getElementById("btn-home")?.addEventListener("click", goHome);
+    document.getElementById("btn-reset-current")?.addEventListener("click", resetCurrentTest);
     document.getElementById("q").addEventListener("input", renderTable);
     document.getElementById("filter-sel").addEventListener("change", renderTable);
     document.getElementById("btn-sample20")?.addEventListener("click", sampleUplink20);
@@ -2058,7 +2607,9 @@ input.note { min-width: 100px; }
     document.getElementById("btn-clear-tab").addEventListener("click", () => selectTab(false));
     document.getElementById("btn-pass-tab").addEventListener("click", () => bulkSetTabResult("Pass"));
     document.getElementById("btn-fail-tab").addEventListener("click", () => bulkSetTabResult("Fail"));
-    document.getElementById("btn-save").addEventListener("click", downloadJson);
+    document.getElementById("btn-save").addEventListener("click", () => { saveCurrentReport(); });
+    document.getElementById("btn-dashboard")?.addEventListener("click", () => { window.location.href = "/dashboard"; });
+    document.getElementById("btn-history")?.addEventListener("click", () => { window.location.href = "/history"; });
 
     // 用 beforeprint/afterprint，避免 2s 超时在打印对话框未关时还原成「仅当前 Tab」
     let printUiPrevTitle = document.title;
@@ -2070,6 +2621,9 @@ input.note { min-width: 100px; }
       updatePrintMeta();
       renderEnv();
       renderTable();
+      // Keep the dedicated print-only RMU table in sync with the current
+      // per-device overall result immediately before browser print preview.
+      if (typeof window.syncPrintDeviceVerdicts === "function") window.syncPrintDeviceVerdicts();
     });
     window.addEventListener("afterprint", () => {
       document.title = printUiPrevTitle;
@@ -2127,6 +2681,93 @@ input.note { min-width: 100px; }
       });
     }
 
+    function frozenPrintHtml() {
+      // Freeze the current rendered DOM so the server archive contains exactly
+      // what the operator is printing, without depending on future Oracle data.
+      document.body.dataset.print = "1";
+      updatePrintMeta();
+      renderEnv();
+      renderTable();
+      // The archived HTML/PDF must contain the same per-RMU overall result
+      // shown by the editable selector, not the template's initial em dash.
+      if (typeof window.syncPrintDeviceVerdicts === "function") window.syncPrintDeviceVerdicts();
+      const clone = document.documentElement.cloneNode(true);
+      clone.classList.add("print-auth");
+      clone.classList.remove("print-draft");
+      const cloneBody = clone.querySelector("body");
+      if (cloneBody) cloneBody.dataset.print = "1";
+      const sourceControls = document.querySelectorAll("input,select,textarea");
+      const cloneControls = clone.querySelectorAll("input,select,textarea");
+      sourceControls.forEach((source, index) => {
+        const target = cloneControls[index];
+        if (!target) return;
+        if (source.tagName === "SELECT") {
+          Array.from(target.options || []).forEach((option, optionIndex) => {
+            if (source.options[optionIndex]?.selected) option.setAttribute("selected", "selected");
+            else option.removeAttribute("selected");
+          });
+        } else if (source.tagName === "TEXTAREA") {
+          target.textContent = source.value || "";
+        } else {
+          target.setAttribute("value", source.value || "");
+          if (source.checked) target.setAttribute("checked", "checked");
+          else target.removeAttribute("checked");
+        }
+      });
+      clone.querySelectorAll("script").forEach((node) => node.remove());
+      clone.querySelectorAll(".print-auth-overlay").forEach((node) => node.remove());
+      return "<!doctype html>\n" + clone.outerHTML;
+    }
+
+    function archiveSnapshot() {
+      const snapshot = exportState();
+      snapshot.network = RAW.network || "distribution";
+      snapshot.generated_at = RAW.generated_at || GENERATED_AT || "";
+      snapshot.distribution_mappings = Array.isArray(RAW.distribution_mappings)
+        ? JSON.parse(JSON.stringify(RAW.distribution_mappings))
+        : [];
+      // Persist the complete point catalog plus entered test results.  This is
+      // intentionally independent from future Oracle changes.
+      snapshot.points_full = state.points.map((point) => Object.assign({}, point));
+      return snapshot;
+    }
+
+    async function archiveCurrentReport(isDraft) {
+      const effectiveDraft = !!isDraft && !currentReportFinalized;
+      const requestBody = {
+        snapshot: archiveSnapshot(),
+        html: frozenPrintHtml(),
+        is_draft: effectiveDraft,
+      };
+      if (currentReportUuid) requestBody.report_uuid = currentReportUuid;
+      const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(requestBody),
+      });
+      let data = {};
+      try { data = await response.json(); } catch (e) { /* ignore */ }
+      if (!response.ok || data.ok === false) throw new Error(data.error || t("toastArchiveFail"));
+      rememberReportUuid(data.report_uuid || currentReportUuid, !data.is_draft);
+      toast(data.is_draft ? t("toastDraftSaved") : t("toastArchived"));
+      return data;
+    }
+
+    async function saveCurrentReport() {
+      const button = document.getElementById("btn-save");
+      if (button && button.disabled) return;
+      if (button) button.disabled = true;
+      try {
+        await archiveCurrentReport(true);
+        persist();
+      } catch (error) {
+        console.error("save current report failed", error);
+        toast(t("toastDraftSaveFail"));
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
     async function requestPrint() {
       const typed = await openPrintAuthDialog();
       if (typed === null) return;
@@ -2138,6 +2779,20 @@ input.note { min-width: 100px; }
       document.documentElement.classList.remove("print-draft");
       printAuthorized = true;
       document.documentElement.classList.add("print-auth");
+      try {
+        await archiveCurrentReport(false);
+      } catch (error) {
+        console.error("server report archive failed", error);
+        toast(t("toastArchiveFail"));
+        if (!window.confirm(t("confirmPrintWithoutArchive"))) {
+          printAuthorized = false;
+          document.documentElement.classList.remove("print-auth");
+          document.body.dataset.print = "0";
+          renderEnv();
+          renderTable();
+          return;
+        }
+      }
       window.print();
     }
 
@@ -2161,33 +2816,6 @@ input.note { min-width: 100px; }
         ev.preventDefault();
         requestPrint();
       }
-    });
-    document.getElementById("btn-load").addEventListener("click", () => {
-      document.getElementById("file-load").click();
-    });
-    document.getElementById("file-load").addEventListener("change", (ev) => {
-      const f = ev.target.files && ev.target.files[0];
-      if (!f) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          applyLoaded(JSON.parse(reader.result));
-          applyStaticI18n();
-          fillMeta();
-          updateSignRole2Ui();
-          fillChannel();
-          renderEnv();
-          renderTabs();
-          updateStats();
-          renderTable();
-          persist();
-          toast(tf("toastLoaded")(f.name));
-        } catch (err) {
-          toast(t("toastLoadFail"));
-        }
-      };
-      reader.readAsText(f, "utf-8");
-      ev.target.value = "";
     });
   }
 

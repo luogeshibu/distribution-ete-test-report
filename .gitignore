@@ -10,3 +10,13 @@ __pycache__/
 logs/
 config/oracle_private_config.py
 config/report_config.json
+# Runtime ETE report archive (persistent local/server data; never commit)
+data/database/*.db
+data/database/*.db-*
+data/reports/*
+!data/reports/.gitkeep
+data/summary_reports/*
+!data/summary_reports/.gitkeep
+data/backup/*
+!data/backup/database/
+!data/backup/database/.gitkeep

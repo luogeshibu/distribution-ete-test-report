@@ -11,7 +11,8 @@ from distribution_signal_verifier.live_report_server import LiveDataProvider, _l
 def test_exact_rmu_name_with_letters_and_hyphen_is_bound_as_text():
     sql, binds = build_rmu_sql(['F05-1509'])
     assert binds == {'rmu_0': 'F05-1509'}
-    assert 'TRIM(comb.name) = TRIM(r.rmu_name)' in sql
+    assert 'REGEXP_LIKE' in sql
+    assert "'(^|[^0-9])' || TRIM(r.rmu_name) || '([^0-9]|$)'" in sql
 
 
 def test_partial_search_supports_each_part_of_alphanumeric_hyphen_name():
@@ -37,4 +38,5 @@ def test_browser_selection_url_encodes_alphanumeric_rmu_name():
     js = _live_script('distribution', [], 60, 'IEC-104')
     assert "params.set('rmu', name)" in js
     assert "new URLSearchParams()" in js
-    assert 'openRmu(item.rmu_name)' in js
+    assert 'selectionToken(item)' in js
+    assert 'openRmu(selectedSelector)' in js

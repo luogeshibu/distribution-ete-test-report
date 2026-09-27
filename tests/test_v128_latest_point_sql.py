@@ -13,7 +13,8 @@ def test_latest_point_sql_uses_reference_name_for_yx_yc_and_index_for_yk():
     assert "yx.reference_name AS signal_key" in sql
     assert "yc.reference_name AS signal_key" in sql
     assert "TO_CHAR(dc.index_no) AS signal_key" in sql
-    assert "signal_key AS DOT_NO, dot_no AS no, signal_name" in sql
+    assert "signal_key AS DOT_NO" in sql
+    assert "dot_no AS no" in sql
 
 
 def test_latest_yx_reference_name_can_be_report_address():

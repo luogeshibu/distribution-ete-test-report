@@ -41,7 +41,8 @@ def test_frontend_has_selectable_candidate_flow():
     assert rendered.count("fetch('/api/rmu-search?q=' + encodeURIComponent(value)") == 1
     assert "function renderSuggestions(items)" in rendered
     assert "button.addEventListener('click'" in rendered
-    assert "openRmu(item.rmu_name)" in rendered
+    assert "selectionToken(item)" in rendered
+    assert "openRmu(selectedSelector)" in rendered
 
 
 def test_final_rendered_iec104_has_no_removed_environment_rows():

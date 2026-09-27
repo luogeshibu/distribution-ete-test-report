@@ -1,19 +1,20 @@
 # Release
 
-Current version: **V1.0.2**
+Current version: **V1.2.29**
 
-## V1.0.2
-- Fix release configuration generation when `print_password` is empty.
-- Keep PyInstaller `getpass` hidden import and full `oracledb` collection.
-- Remove generated/development-only files from the publish-source package.
-- Use `VERSION` as the single version source.
-- Keep SQL/query/UI behavior unchanged from the V1.0.0 baseline.
+## V1.2.29
+- Project/delivery identity is `distribution-ete-test-report`.
+- Formal Print/PDF archives the frozen report to the central service before local printing.
+- Persistent data lives under the program directory in `data/` and must survive upgrades.
+- Historical reports are available from `/history` with view/download functions.
+- SQLite metadata uses WAL mode and schema migrations; future migrations back up the database first.
+- Existing RMU/point SQL and Oracle query behavior remain unchanged.
 
 ## Build
 
 ```powershell
-.\setup.ps1
-.\build_release.ps1
+.\scripts\setup.ps1
+.\scripts\build_release.ps1
 ```
 
-The distributable ZIP is generated under `release` and is not part of the source package.
+The distributable ZIP is generated under `release/`. Never replace a production `data/` directory with a new empty one during an upgrade.

@@ -1,3 +1,202 @@
+# v1.2.44 - 2026-09-27
+
+- Fixed fuzzy RMU selection so clicking one search result adds **only the exact device that was clicked**, even when several feeders contain the same short RMU name (for example `6`).
+- Search results now carry the device `COMBINED_ID`; selected devices are represented by stable `id:<COMBINED_ID>` tokens instead of ambiguous short RMU names.
+- Added an exact, read-only Oracle mapping query by `COMBINED_ID`. Fuzzy matching remains only in the search candidate list; after selection there is no fuzzy expansion.
+- Remove now targets the exact selected device, so removing one duplicated short-name RMU does not remove or affect another.
+- Multi-device point grouping and per-device overall-result keys now use unique device identity, preventing duplicated short RMU names from sharing statistics or verdict state.
+- Kept backward compatibility for legacy plain-RMU-name report URLs and migrated older per-device verdict keys when possible.
+- Oracle access remains strictly read-only; this change adds only SELECT-based lookup logic.
+- Automated regression suite: 130 tests passed.
+
+# v1.2.43 - 2026-09-27
+
+- Removed the 60-second full-page auto-refresh from the ETE testing page.
+- A running test session now stays on the current browser state until the operator explicitly navigates, searches, saves, resets, or refreshes the page.
+- Continuing a saved report restores the server draft only on explicit entry/navigation instead of reloading it every minute.
+- Kept the existing refresh configuration parameter for backward compatibility, but it no longer triggers browser page reloads.
+- Oracle access remains strict read-only.
+
+# v1.2.42 - 2026-09-27
+
+- Renamed the main section title from `配网环网柜查询 / Distribution RMU Search` to `配网设备查询 / Distribution Device Search` so the page title matches the broader distribution-device test scope.
+- Kept the current `环网柜名称（RMU Name）` input label and RMU search behavior unchanged; this release changes the section title only.
+- No Oracle SQL, report state, PDF, history, or test-progress logic changes. Oracle remains strictly read-only.
+
+# v1.2.41 - 2026-09-27
+
+- Fixed multi-RMU incremental testing: adding or removing an RMU no longer resets test progress already entered for the existing selected RMUs.
+- Root cause: RMU selection intentionally performs a full page navigation so the new device point list can be read from Oracle; the previous in-memory report state was not carried across that navigation, so the page rebuilt every selected device from fresh query results.
+- Added a one-time same-tab `sessionStorage` handoff for RMU add/remove navigation. It carries the current report state, report UUID and small UI context into the newly rendered multi-RMU page, restores matching existing point IDs, leaves newly added RMU points blank, then immediately deletes the handoff token/data. A normal page open still starts clean.
+- No automatic persistent browser test-state cache was reintroduced. History -> Continue Test remains the only normal server-side draft restoration path.
+- Oracle behavior is unchanged and remains strictly read-only; adding an RMU performs query-only Oracle access and never writes Oracle data.
+
+# v1.2.40 - 2026-09-27
+
+- Fixed per-RMU overall-result propagation into print/PDF output.
+- Root cause: the editable RMU selector lives in the live-script scope while the report `state` is private to the main report IIFE; v1.2.39 attempted to read a global `state` that does not exist, so the selected verdict was never written into the archived report state.
+- Added an explicit `window.getDeviceVerdicts` / `window.setDeviceVerdict` bridge owned by the main report so screen selection, archive snapshot, history resume and print/PDF all use the same `meta.device_verdicts` object.
+- Existing Oracle access remains strictly read-only. No Oracle write path was added.
+
+# v1.2.39 - 2026-09-27
+
+- Fixed per-RMU `总评 / Overall Result` missing from browser print preview and archived HTML/PDF even when the screen selector already showed `通过 / Pass`.
+- The print-only RMU table is now synchronized from `meta.device_verdicts` immediately before `beforeprint` rendering and before the frozen archive HTML is cloned.
+- History -> Continue Test now refreshes the per-RMU verdict selectors after asynchronous saved-state restoration.
+- Made the per-RMU verdict binding idempotent so re-syncing does not add duplicate change listeners.
+- No Oracle SQL/query behavior changed; Oracle remains strictly read-only.
+
+# v1.2.38 - 2026-09-27
+
+- Fixed the empty Test Dashboard on first open: `/dashboard` now auto-loads the existing server-side ETE history immediately.
+- Added a local-history dashboard mode that does **not** query Oracle when area/substation/feeder are blank. Existing tested/in-progress devices, Pass/Pass with comments/Fail counts, feeder breakdown and report links are shown from the local archive.
+- In local-history mode, `未调试` and `完成率` are shown as unknown (`—`) instead of misleading zero/100% values because no authoritative device population has been queried.
+- Entering an area, substation, or feeder switches to the existing device-coverage mode: SMART inventory is read and merged with local report history to calculate total/untested/completion. Oracle access remains strictly read-only.
+- Date-only filtering stays in local-history mode and does not trigger an Oracle inventory query.
+- Updated overall-summary HTML/PDF labels so history-only exports distinguish `历史测试设备` from scoped `智能设备总数`.
+- Kept the existing draft/final workflow unchanged: Save Current Report remains `草稿 / 未完成`; the existing formal Print/PDF flow promotes the report to `正式 / 已完成`.
+
+# v1.2.37 - 2026-09-26
+
+- Swapped the header positions of `首页 / Home` and the `中文 / EN` language switcher. The new order starts with Home, then the language switcher, followed by Reset/Save/Dashboard/History/Print actions.
+- No Oracle query, read-only guard, report data, history, PDF, or test-state logic changes.
+
+# v1.2.36 - 2026-09-26
+
+- Enforced strict Oracle read-only SQL validation on every Oracle execution path: only one `SELECT` / `WITH ... SELECT` statement is accepted; DML, DDL, PL/SQL, transaction-control statements and `SELECT FOR UPDATE` are rejected before cursor execution.
+- Removed browser persistence/automatic restoration of test state. `localStorage` now retains language preference only; test selections, results, received flags, notes and report metadata are never restored on a normal reopen.
+- Removed automatic `sessionStorage` report UUID reuse. Only an explicit History -> Continue Test link (`?resume=<uuid>`) restores a saved draft.
+- Added `首页 / Home` and `重置当前测试 / Reset Current Test` actions. Reset clears only the current client test state and never deletes saved history.
+- Kept local SQLite/JSON/PDF report archiving writable; this is separate from Oracle and does not write to Oracle.
+
+## v1.2.35
+
+- 历史报表页新增“生成 PDF / 重新生成 PDF”，草稿、未完成、正式、已完成状态均可生成当前已保存快照的 PDF。
+- PDF 生成与测试状态解耦：生成或重新生成 PDF 不会把草稿自动改为正式，也不会修改最后保存时间。
+- 草稿 PDF 自动保留 `DRAFT / 非最终版本` 水印；正式报告 PDF 不显示草稿水印。
+- PDF 从服务端已归档 HTML 快照生成，不重新查询 Oracle，避免历史测试结果被后续实时数据改变。
+- 已生成后提供“查看 PDF / 下载 PDF / 重新生成 PDF”；生成失败时保留原有 PDF。
+- 不修改 RMU 查询、点表 SQL、Oracle 查询、配置文件或 `scripts/run.ps1`。
+
+## v1.2.34
+
+- Removed the `ADMS 版本 / ADMS Version` row from the PDF/print cover metadata.
+- The editable `主站 / 前置版本 (ADMS / FES Version)` field and archived report data remain unchanged; this change only affects PDF/print cover presentation.
+- No RMU query, point SQL, Oracle query, report archive schema, runtime config, or `scripts/run.ps1` changes.
+
+## v1.2.33
+
+- 修复运行时页头仍显示“变电站 / 区域”的问题。
+- 页头副标题现在由服务端直接渲染为“配网设备 · 版本 v1.2.33 · 生成 …”，不再依赖后置浏览器脚本才能覆盖。
+- 英文页头对应显示“Distribution Equipment · Version v1.2.33 · Generated …”。
+- 不修改 RMU 查询、点表 SQL、Oracle 查询、配置文件或 run.ps1。
+
+## v1.2.32
+
+- Simplified the main ETE page header subtitle: removed Substation/Area and added the running application version.
+- Chinese header now shows `配网设备 · 版本 vX.Y.Z · 生成 ...`; English shows `Distribution Equipment · Version vX.Y.Z · Generated ...`.
+- No RMU/point/protocol SQL, Oracle query, runtime config, or `scripts/run.ps1` changes.
+
+## v1.2.31
+
+- Added a centralized `/dashboard` management page for area/substation/feeder ETE progress.
+- Added a separate SMART-device inventory query for dashboard population counts without changing the existing RMU search, exact RMU query, point SQL, protocol SQL, or Oracle point-loading workflow.
+- Dashboard merges current SMART-device inventory with the latest finalized ETE result per device and shows total/tested/in-progress/untested, Pass/Pass with comments/Fail, completion rate and pass rate.
+- Added per-feeder progress statistics and device-level drill-down links to archived reports.
+- Added persistent SMART-device inventory cache in SQLite and fallback to the latest cache when Oracle inventory lookup fails.
+- Added overall summary report export with persistent HTML/JSON/PDF snapshots under `data/summary_reports/`.
+- Added schema migration v3 for inventory cache and summary-report metadata; existing report history is preserved.
+- Added Dashboard navigation from ETE Test and History pages.
+- `config/report_config.json` and `scripts/run.ps1` remain unchanged.
+
+## v1.2.30
+
+- Replaced the top-level `保存 JSON / 加载 JSON` workflow with `保存当前报告`.
+- The current ETE test can be saved to the central service at any time as a draft. Repeated saves update the same draft instead of creating duplicate history rows.
+- Historical reports now distinguish `草稿 / 未完成` and `正式 / 已完成`; drafts include a `继续测试` action that restores the saved test state.
+- Formal `打印 / PDF` promotes the current draft to the final report using the same report UUID and then opens the local print dialog.
+- Added schema migration v2 (`updated_at`, `finalized_at`, status indexes) while preserving existing v1.2.29 report data.
+- Draft saves archive JSON/HTML only; final Print/PDF generates the server-side PDF.
+- Existing RMU search SQL, point SQL, Oracle query logic, `scripts/run.ps1`, and `config/report_config.json` remain unchanged.
+
+## v1.2.29
+
+- Renamed the delivery/project package identity to `distribution-ete-test-report`.
+- Formal Print/PDF now archives the current frozen report to the central service before opening the local print dialog.
+- Added persistent storage under the program directory: `data/database`, `data/reports`, and `data/backup`.
+- Added SQLite WAL-based report metadata storage with schema migration tracking and automatic pre-migration database backups.
+- Added historical report page `/history` with filters for debug/test date, substation, feeder, device, test lead and verdict.
+- Added report view/download endpoints for PDF, HTML and JSON snapshots.
+- Server-side PDF archive uses local Edge/Chrome/Chromium headless printing when available; HTML and JSON are always archived.
+- Existing RMU search SQL, point SQL, Oracle query logic, `scripts/run.ps1`, and `config/report_config.json` are unchanged.
+
+## v1.2.28
+
+- PDF 报告中的“RTU 信号测试统计”改为第一种汇总表形式：一个表头，按每个选中设备一行展示。
+- 列包含：设备、计划、已测、上行覆盖、下行覆盖、Pass、Pass with comments、Fail、Blocked、N/A、Pass率。
+- 网页端 3.x 统计卡片保持原样，仅调整 PDF / 打印布局。
+- 不修改 RMU 查询逻辑、点表 SQL、Oracle 查询逻辑、配置文件与运行脚本。
+
+## v1.2.27
+
+- Multi-RMU report numbers are now generated per device and separated with ` / ` on the signature page.
+- Example: `E2E-RMU-A-20260926 / E2E-RMU-B-20260926`.
+- No RMU search SQL, point SQL, Oracle query logic, run script, or site config changes.
+
+## v1.2.26
+
+- Removed the substation row from the PDF/print signature-page metadata.
+- Kept report number and test date unchanged.
+
+## v1.2.25
+
+- PDF：RTU 信号测试统计改为紧凑表格展示；网页统计卡片保持不变。
+- 不修改 RMU 查询、模糊搜索、点表 SQL 或 Oracle 查询逻辑。
+- `config/report_config.json` 保持原样。
+
+# Changelog
+
+## 1.2.23
+- 优化正式打印/PDF中的多 RMU 设备表列宽与打印字体，避免表头和单元格重叠。
+- 报告封面移除单一 IEC-104 通道摘要，多 RMU 通道信息统一保留在设备表中。
+- 不修改 RMU 查询、模糊搜索、点表 SQL 或 Oracle 查询逻辑。
+
+## 1.2.22 - 2026-09-26
+
+- Based strictly on the supplied v1.2.13 source layout and existing query logic.
+- Added multi-RMU selection by repeated fuzzy search, per-RMU overall result, and per-row remove action.
+- Added per-RMU 3.x statistics and full-height 4.x signal point groups without changing the existing RMU/point SQL.
+- Simplified the report cover by removing report number, substation, region, and global overall result.
+- The web-only environment block is hidden; the print/PDF environment section lists the selected RMUs.
+- No server-side report archive/history feature is included.
+
+## 1.2.13 - 2026-09-25
+
+- Fixed `scripts/build_release.ps1` aborting with `NativeCommandError` when PyInstaller is absent from a newly-created virtual environment.
+- PyInstaller availability is now checked with `importlib.util.find_spec()` without importing the package; the build script installs PyInstaller automatically when missing.
+- Continues to invoke PyInstaller as `python -m PyInstaller` for Windows App Control compatibility.
+
+# Changelog
+
+## 1.2.12
+
+- Replaced the live RMU identity query with the newly supplied RMU-name SQL, including `dms_combined_device.st_string_07` as `FUNCTION LOCATION`.
+- Added `FUNCTION LOCATION` to the RMU result table immediately before `IP`.
+- Preserved the existing point-table SQL, IEC-104 display, report workflow, and Windows build behavior.
+
+## 1.2.11
+
+- Fixed Windows release builds on managed endpoints where `pyinstaller.exe` is blocked by application control.
+- `build_release.ps1` now invokes PyInstaller via the active project Python: `python -m PyInstaller`.
+- PyInstaller is installed only when its Python module is missing, avoiding unnecessary reinstall on every build.
+
+## 1.2.10
+
+- Replaced the COM_ID point-table query with the newly supplied SQL.
+- YX/YC use `reference_name`, YK uses `index_no`, and rows with null or `-1` match keys are filtered exactly as supplied.
+- Preserved the report-facing source table labels YX=13560, YC=13561, YK=13579 without changing the supplied Oracle query output.
+- No unrelated RMU search, protocol/channel, configuration, or report-layout changes.
+
 ## 1.2.9
 
 - Restored the original three-remote source table numbers in the point list: YX=13560, YC=13561, YK=13579, replacing the generic `三遥` display.
@@ -57,6 +256,12 @@
 
 # Changelog
 
+## 1.2.12
+
+- Replaced the live RMU identity query with the newly supplied RMU-name SQL, including `dms_combined_device.st_string_07` as `FUNCTION LOCATION`.
+- Added `FUNCTION LOCATION` to the RMU result table immediately before `IP`.
+- Preserved the existing point-table SQL, IEC-104 display, report workflow, and Windows build behavior.
+
 ## v1.1.7 - 2026-09-19
 - IEC-104 Environment Precautions now renders only Protocol and Channel ID; TCP Port, Note, baud rate, data bits, parity and stop bits are removed from the actual distribution template and final renderer.
 - RMU search uses partial-name matching and returns selectable candidates before opening the report.
@@ -74,6 +279,12 @@
 - Removed TCP Port and Note rows directly from generated distribution IEC-104 HTML.
 
 # Changelog
+
+## 1.2.12
+
+- Replaced the live RMU identity query with the newly supplied RMU-name SQL, including `dms_combined_device.st_string_07` as `FUNCTION LOCATION`.
+- Added `FUNCTION LOCATION` to the RMU result table immediately before `IP`.
+- Preserved the existing point-table SQL, IEC-104 display, report workflow, and Windows build behavior.
 
 ## V1.1.4
 
@@ -106,3 +317,8 @@
 
 ## V1.1.0
 - Reorganized the repository into src/web/config/scripts/examples/docs/tests structure.
+
+## 1.2.24
+- Restore `config/report_config.json` and `config/report_config.example.json` exactly from the user-provided v1.2.13 baseline.
+- Keep `scripts/run.ps1` config-loading behavior unchanged.
+- No SQL/query logic changes.

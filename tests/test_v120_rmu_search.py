@@ -41,5 +41,6 @@ def test_runtime_script_searches_then_selects():
     js = _live_script('distribution', [], 60, 'IEC-104')
     assert "/api/rmu-search?q=" in js
     assert "renderSuggestions(items)" in js
-    assert "openRmu(item.rmu_name)" in js
+    assert "selectionToken(item)" in js
+    assert "openRmu(selectedSelector)" in js
     assert "环网柜搜索失败" in js
