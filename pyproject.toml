@@ -1,6 +1,6 @@
 [project]
 name = "distribution-ete-test-report"
-version = "1.2.44"
+version = "1.2.62"
 description = "ADMS distribution ETE signal test and centralized report archive tool"
 requires-python = ">=3.10"
 dependencies = ["oracledb>=2.0", "cryptography>=3.2.1"]

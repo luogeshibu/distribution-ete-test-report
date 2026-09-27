@@ -15,4 +15,4 @@ def test_live_test_page_has_no_periodic_full_page_reload():
 
 
 def test_version_is_1243():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.44"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.62"

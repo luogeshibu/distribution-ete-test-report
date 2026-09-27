@@ -240,8 +240,31 @@ class ReportStore:
         )
 
     @staticmethod
-    def _summary_verdict(device_verdicts: Mapping[str, Any], devices: Sequence[Mapping[str, Any]]) -> str:
-        values = [_text(device_verdicts.get(_text(item.get("rmu_name")))) for item in devices]
+    def _device_verdict_value(device_verdicts: Mapping[str, Any], device: Mapping[str, Any]) -> str:
+        """Resolve one device verdict by exact identity before legacy short name.
+
+        New UI state keys verdicts by the operator-selected full ADMS GSS FID.
+        Falling back to the short RMU name is kept only for old archives.
+        """
+        rmu_name = _text(device.get("rmu_name"))
+        display_name = _text(device.get("adms_gss_fid") or device.get("display_name"))
+        combined_id = _text(device.get("combined_id"))
+        candidates = []
+        if display_name:
+            candidates.extend((f"fid:{display_name}", display_name))
+        if combined_id:
+            candidates.extend((f"id:{combined_id}", combined_id))
+        if rmu_name:
+            candidates.append(rmu_name)
+        for key in candidates:
+            value = _text(device_verdicts.get(key))
+            if value:
+                return value
+        return ""
+
+    @classmethod
+    def _summary_verdict(cls, device_verdicts: Mapping[str, Any], devices: Sequence[Mapping[str, Any]]) -> str:
+        values = [cls._device_verdict_value(device_verdicts, item) for item in devices]
         values = [value for value in values if value]
         if not values:
             return ""
@@ -404,7 +427,7 @@ class ReportStore:
                         _text(device.get("nop")), _text(device.get("function_location")),
                         _text(device.get("ip")), _text(device.get("protocol_name")),
                         _text(device.get("feeder_name")), _text(device.get("substation_name")),
-                        _text(device.get("subcontrolarea_name")), _text(verdicts.get(rmu_name)),
+                        _text(device.get("subcontrolarea_name")), self._device_verdict_value(verdicts, device),
                     ),
                 )
             connection.commit()

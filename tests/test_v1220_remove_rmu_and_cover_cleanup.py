@@ -16,13 +16,14 @@ def test_selected_rmu_table_has_per_row_remove_button():
     assert "操作" in html
     assert "Action" in html
     assert 'class="rmu-remove-button compact"' in html
-    assert 'data-rmu="id:1001"' in html
+    assert 'data-rmu="fid:JED-TEST-001"' in html
+    assert 'data-rmu-id="id:1001"' in html
     assert "移除" in html
 
 
 def test_live_script_removes_only_selected_rmu_and_reloads_remaining_list():
     js = _live_script("distribution", ["JED-TEST-001", "JED-TEST-002"], 60, "IEC-104")
-    assert "function removeRmu(name)" in js
+    assert "function removeRmu(name, idAlias)" in js
     assert "selectedRmus.splice(index, 1)" in js
     assert "navigateSelectedRmus();" in js
     assert "document.querySelectorAll('.rmu-remove-button[data-rmu]')" in js

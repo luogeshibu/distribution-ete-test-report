@@ -4,7 +4,7 @@
   <meta name="distribution-final-template" content="true">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Distribution Equipment Signal E2E Test Report — 配网</title>
+<title>配网设备信号端到端测试报告 · ADMS</title>
 <style>
 :root {
   --bg: #eef1f4;
@@ -791,7 +791,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       <button type="button" class="ghost" id="btn-save" data-i18n="btnSave">保存当前报告</button>
       <button type="button" class="ghost" id="btn-dashboard" data-i18n="btnDashboard">测试总览</button>
       <button type="button" class="ghost" id="btn-history" data-i18n="btnHistory">历史报表</button>
-      <button type="button" class="ghost" id="btn-print-draft" data-i18n="btnPrintDraft">打印 / Draft</button>
+      <button type="button" class="ghost" id="btn-print-draft" data-i18n="btnPrintDraft">打印 / 草稿</button>
       <button type="button" class="ghost" id="btn-print" data-i18n="btnPrint">打印 / PDF</button>
     </div>
   </div>
@@ -821,8 +821,8 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     <h2><span data-live-zh="">1. 配网设备查询</span><span data-live-en="" style="display:none">1. Distribution Device Search</span></h2>
     <form id="distribution-rmu-form" class="toolbar rmu-search-toolbar">
       <label class="field rmu-name-field" style="min-width:280px;flex:1">
-        <span data-live-zh="">环网柜名称（RMU Name）</span><span data-live-en="" style="display:none">RMU Name</span>
-        <input id="distribution-rmu-input" value="" autocomplete="off" placeholder="例如：输入 346 后选择环网柜">
+        <span data-live-zh="">设备名称</span><span data-live-en="" style="display:none">Device Name</span>
+        <input id="distribution-rmu-input" value="" autocomplete="off" placeholder="例如：输入设备名称或编号后选择设备">
         <div id="rmu-suggestions" class="rmu-suggestions" hidden></div>
       </label>
       <button type="submit" class="rmu-search-button" aria-label="搜索数据库">
@@ -914,10 +914,10 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     <div class="toolbar no-print">
       <input type="search" id="q" data-i18n-placeholder="searchPh">
       <select id="filter-sel"></select>
-      <button type="button" id="btn-sel-tab" data-i18n="btnSelTab">全选当前 Tab</button>
-      <button type="button" id="btn-clear-tab" data-i18n="btnClearTab">清空当前 Tab 勾选</button>
-      <button type="button" id="btn-pass-tab" data-i18n="btnPassTab">一键全 Pass</button>
-      <button type="button" id="btn-fail-tab" data-i18n="btnFailTab">一键全 Fail</button>
+      <button type="button" id="btn-sel-tab" data-i18n="btnSelTab">全选当前页签</button>
+      <button type="button" id="btn-clear-tab" data-i18n="btnClearTab">清空当前页签勾选</button>
+      <button type="button" id="btn-pass-tab" data-i18n="btnPassTab">一键全通过</button>
+      <button type="button" id="btn-fail-tab" data-i18n="btnFailTab">一键全失败</button>
       <span class="hint" id="tab-count"></span>
     </div>
     <div id="multi-rmu-points-root" class="multi-rmu-point-groups"></div>
@@ -1019,6 +1019,107 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
   const RAW = JSON.parse(document.getElementById("payload").textContent);
   const STORAGE_KEY = "distribution_rmu_e2e_report_search";
   const LANG_KEY = STORAGE_KEY + "_lang";
+
+  // One global language authority for the whole application. The language is
+  // owned by an explicit controller and can only be changed by the 中文 / EN
+  // buttons. To survive full-page device navigation even in browsers where
+  // localStorage is unavailable or stale, the controller mirrors the same
+  // operator-selected value into window.name and a same-origin cookie. No
+  // report/task/device state is allowed to choose a language.
+  const WINDOW_LANG_MARKER = "__distribution_ete_lang__=";
+  const LANG_COOKIE = "distribution_ete_language";
+
+  function validLanguage(value) {
+    return value === "zh" || value === "en";
+  }
+
+  function readWindowLanguage() {
+    try {
+      const parts = String(window.name || "").split("|");
+      for (const part of parts) {
+        if (part.startsWith(WINDOW_LANG_MARKER)) {
+          const value = part.slice(WINDOW_LANG_MARKER.length);
+          if (validLanguage(value)) return value;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return "";
+  }
+
+  function writeWindowLanguage(value) {
+    if (!validLanguage(value)) return;
+    try {
+      const parts = String(window.name || "").split("|").filter((part) => part && !part.startsWith(WINDOW_LANG_MARKER));
+      parts.push(WINDOW_LANG_MARKER + value);
+      window.name = parts.join("|");
+    } catch (e) { /* ignore */ }
+  }
+
+  function readCookieLanguage() {
+    try {
+      const prefix = LANG_COOKIE + "=";
+      for (const raw of String(document.cookie || "").split(";")) {
+        const item = raw.trim();
+        if (!item.startsWith(prefix)) continue;
+        const value = decodeURIComponent(item.slice(prefix.length));
+        if (validLanguage(value)) return value;
+      }
+    } catch (e) { /* ignore */ }
+    return "";
+  }
+
+  function writeCookieLanguage(value) {
+    if (!validLanguage(value)) return;
+    try {
+      document.cookie = LANG_COOKIE + "=" + encodeURIComponent(value) + "; Path=/; Max-Age=31536000; SameSite=Lax";
+    } catch (e) { /* ignore */ }
+  }
+
+  function readLocalLanguage(key) {
+    try {
+      const saved = localStorage.getItem(key);
+      return validLanguage(saved) ? saved : "";
+    } catch (e) { return ""; }
+  }
+
+  function createLanguageController(key) {
+    // Same-tab window.name is authoritative across a full-page navigation.
+    // Cookie/localStorage are durable mirrors and allow History/Dashboard/Home
+    // to share the same operator preference.
+    let current = readWindowLanguage() || readCookieLanguage() || readLocalLanguage(key) || "zh";
+
+    function mirror(value) {
+      if (!validLanguage(value)) return;
+      writeWindowLanguage(value);
+      writeCookieLanguage(value);
+      try { localStorage.setItem(key, current); } catch (e) { /* ignore */ }
+    }
+
+    // Migration/synchronization only: this writes the already-selected value;
+    // it does not choose a new language.
+    mirror(current);
+
+    return {
+      get() { return current; },
+      select(next) {
+        if (!validLanguage(next)) return current;
+        current = next;
+        mirror(current);
+        return current;
+      },
+      sync(next) {
+        if (!validLanguage(next)) return current;
+        current = next;
+        mirror(current);
+        return current;
+      },
+    };
+  }
+  const LANGUAGE_CONTROLLER = window.DistributionLanguageController || createLanguageController(LANG_KEY);
+  window.DistributionLanguageController = LANGUAGE_CONTROLLER;
+  // Remove stale navigation-language values created by v1.2.54-v1.2.60.
+  // They are intentionally never read again.
+  try { sessionStorage.removeItem(LANG_KEY + "_nav"); } catch (e) { /* ignore */ }
   const SEARCH_PARAMS = new URLSearchParams(window.location.search);
   const RESUME_REPORT_UUID = SEARCH_PARAMS.get("resume") || "";
   const RMU_HANDOFF_TOKEN = SEARCH_PARAMS.get("handoff") || "";
@@ -1045,14 +1146,14 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     zh: {
       hdrTitle: "E2E 测试报告 · ADMS",
       hdrSub: (s, id, t) => `站 ${s} · ${id} · 生成 ${t}`,
-      printTitle: "End-to-End Test Report（ADMS）",
+      printTitle: "端到端测试报告（ADMS）",
       btnHome: "首页",
       btnResetCurrent: "重置当前测试",
       btnSave: "保存当前报告",
       btnDashboard: "测试总览",
       btnHistory: "历史报表",
       btnPrint: "打印 / PDF",
-      btnPrintDraft: "打印 / Draft",
+      btnPrintDraft: "打印 / 草稿",
       printAuthTitle: "打印口令",
       printAuthPlaceholder: "请输入打印口令",
       printAuthCancel: "取消",
@@ -1103,7 +1204,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       phaseRegression: "回归复测",
       verdictUnset: "（未选）",
       verdictPass: "通过",
-      verdictConditional: "Pass with comments",
+      verdictConditional: "通过（带备注）",
       verdictFail: "不通过",
       colCheckItem: "检查项",
       colResult: "结果",
@@ -1124,26 +1225,26 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       filterSelected: "仅已勾选",
       filterUnselected: "仅未勾选",
       filterUntested: "仅未测（已勾选且无结果）",
-      filterFail: "仅 Fail",
-      filterPass: "仅 Pass",
+      filterFail: "仅失败",
+      filterPass: "仅通过",
       btnSample20: "上行分层勾选约 20%",
-      btnSelTab: "全选当前 Tab",
-      btnClearTab: "清空当前 Tab 勾选",
-      btnPassTab: "一键全 Pass",
-      btnFailTab: "一键全 Fail",
-      tabYX: "上行 Status Indications",
-      tabYC: "上行 Analog Measurements",
-      tabYK: "下行 Single/Double Commands",
-      tabPD: "下行 Step Commands",
-      tabSP: "下行 Setpoint Commands",
-      kindYX: "Status Indication",
-      kindYC: "Analog Measurement",
-      kindYK: "Single/Double Command",
-      kindPD: "Step Command",
-      kindSP: "Setpoint Command",
+      btnSelTab: "全选当前页签",
+      btnClearTab: "清空当前页签勾选",
+      btnPassTab: "一键全通过",
+      btnFailTab: "一键全失败",
+      tabYX: "上行状态量",
+      tabYC: "上行模拟量",
+      tabYK: "下行单/双点遥控",
+      tabPD: "下行步进遥控",
+      tabSP: "下行设点命令",
+      kindYX: "状态量",
+      kindYC: "模拟量",
+      kindYK: "单/双点遥控",
+      kindPD: "步进遥控",
+      kindSP: "设点命令",
       kpiPlanned: "计划(勾选)",
       kpiTested: "已测",
-      kpiPassRate: "Pass率",
+      kpiPassRate: "通过率",
       kpiUpCoverage: "上行全量覆盖",
       kpiDownCoverage: "下行全量覆盖",
       dash: "—",
@@ -1155,18 +1256,18 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       scaleHint: (c) =>
         `点表规模：1245=${c["1245"]} · 1246=${c["1246"]} · 1206=${c["1206"]} · 1207=${c["1207"]} · 1208=${c["1208"]}（控制地址为 ADMS 导出原值）`,
       statsDetail: (u, d) =>
-        `上行：全量 ${u.total} · 已测 ${u.testedFull}（覆盖 ${u.coverage}）· 计划 ${u.planned} · Pass ${u.passTotal}（含备注 ${u.passComments}） Fail ${u.fail} · Pass率 ${u.rate}` +
-        ` ｜ 下行：全量 ${d.total} · 已测 ${d.testedFull}（覆盖 ${d.coverage}）· 计划 ${d.planned} · Pass ${d.passTotal}（含备注 ${d.passComments}） Fail ${d.fail} · Pass率 ${d.rate}`,
+        `上行：全量 ${u.total} · 已测 ${u.testedFull}（覆盖 ${u.coverage}）· 计划 ${u.planned} · 通过 ${u.passTotal}（带备注 ${u.passComments}） 失败 ${u.fail} · 通过率 ${u.rate}` +
+        ` ｜ 下行：全量 ${d.total} · 已测 ${d.testedFull}（覆盖 ${d.coverage}）· 计划 ${d.planned} · 通过 ${d.passTotal}（带备注 ${d.passComments}） 失败 ${d.fail} · 通过率 ${d.rate}`,
       toastSample: (n) => `已按类型分层勾选上行约 20%（${n} 点）`,
-      toastSelAll: "已全选当前 Tab",
-      toastClear: "已清空当前 Tab 勾选",
-      toastBulkEmpty: "当前 Tab 没有测点",
-      toastBulkPass: (n) => `已将当前 Tab ${n} 点设为 Pass，勾选纳入，是否收到=是`,
-      toastBulkFail: (n) => `已将当前 Tab ${n} 点设为 Fail，勾选纳入，是否收到=否`,
+      toastSelAll: "已全选当前页签",
+      toastClear: "已清空当前页签勾选",
+      toastBulkEmpty: "当前页签没有测点",
+      toastBulkPass: (n) => `已将当前页签 ${n} 个点设为通过，并勾选纳入，是否收到=是`,
+      toastBulkFail: (n) => `已将当前页签 ${n} 个点设为失败，并勾选纳入，是否收到=否`,
       confirmBulkPass: (kind, n) =>
-        `将把 ${kind} 共 ${n} 点全部设为 Pass，勾选纳入，并将「是否收到」设为是。已有结果会被覆盖。确定？`,
+        `将把 ${kind} 共 ${n} 个点全部设为通过，勾选纳入，并将「是否收到」设为是。已有结果会被覆盖。确定？`,
       confirmBulkFail: (kind, n) =>
-        `将把 ${kind} 共 ${n} 点全部设为 Fail，勾选纳入，并将「是否收到」设为否。已有结果会被覆盖。确定？`,
+        `将把 ${kind} 共 ${n} 个点全部设为失败，勾选纳入，并将「是否收到」设为否。已有结果会被覆盖。确定？`,
       toastSaved: "已下载结果 JSON",
       toastLoaded: (n) => `已加载 ${n}`,
       toastLoadFail: "加载失败：JSON 无效",
@@ -1191,6 +1292,14 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       printVerdict: "总评",
       printConditions: "备注",
       printStatsDevice: "设备",
+      resultPass: "通过",
+      resultConditional: "通过（带备注）",
+      resultFail: "失败",
+      resultBlocked: "阻塞",
+      resultNA: "不适用",
+      channelPrimary: "主通道",
+      channelBackup: "备通道",
+      deviceFallback: "设备 ",
     },
     en: {
       hdrTitle: "E2E Test Report · ADMS",
@@ -1341,6 +1450,14 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       printVerdict: "Verdict",
       printConditions: "Comments",
       printStatsDevice: "Device",
+      resultPass: "Pass",
+      resultConditional: "Pass with comments",
+      resultFail: "Fail",
+      resultBlocked: "Blocked",
+      resultNA: "N/A",
+      channelPrimary: "Primary",
+      channelBackup: "Backup",
+      deviceFallback: "Device ",
     },
   };
 
@@ -1367,11 +1484,10 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     fail: "fail",
   };
 
-  let lang = "zh";
-  try {
-    const savedLang = localStorage.getItem(LANG_KEY);
-    if (savedLang === "zh" || savedLang === "en") lang = savedLang;
-  } catch (e) { /* ignore */ }
+  // Current language always starts from the single global controller.
+  // The controller reads only localStorage, so repeated device additions and
+  // History/Dashboard/Home navigation cannot fall back to another language.
+  let lang = LANGUAGE_CONTROLLER.get();
 
   function t(key) {
     const v = I18N[lang][key];
@@ -1382,6 +1498,20 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     const v = I18N[lang][key];
     return typeof v === "function" ? v : null;
   }
+
+  function resultLabel(value) {
+    const map = {
+      "Pass": "resultPass",
+      "Pass with comments": "resultConditional",
+      "Fail": "resultFail",
+      "Blocked": "resultBlocked",
+      "N/A": "resultNA",
+    };
+    return value ? t(map[value] || value) : t("resultUnset");
+  }
+
+  window.getReportLanguage = () => lang;
+  window.isReportEnglish = () => lang === "en";
 
   const TABS = [
     { id: "YX", kind: "YX", labelKey: "tabYX" },
@@ -1421,24 +1551,30 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
   };
   const DISTRIBUTION_RMUS = Array.isArray(RAW.distribution_mappings) ? RAW.distribution_mappings : [];
   function rmuIdentity(m) {
+    // The operator-selected full FID is the authoritative browser identity.
+    // Prefer it over COMBINED_ID so adding another device cannot break grouping
+    // because of JavaScript integer precision or a changed DB-side numeric type.
+    if (m && String(m.adms_gss_fid || '').trim()) return 'fid:' + String(m.adms_gss_fid).trim();
     if (m && m.combined_id !== undefined && m.combined_id !== null && String(m.combined_id).trim()) {
       return 'id:' + String(m.combined_id).trim();
     }
-    if (m && String(m.adms_gss_fid || '').trim()) return 'fid:' + String(m.adms_gss_fid).trim();
     return String((m && m.rmu_name) || '');
   }
   function pointRmuIdentity(p) {
+    // build_payload stamps every distribution point with rmu_display_name.
+    // Use that same full FID first so the point remains attached to the exact
+    // device the operator clicked, even after another device is added/removed.
+    if (p && String(p.rmu_display_name || '').trim()) return 'fid:' + String(p.rmu_display_name).trim();
     if (p && p.combined_id !== undefined && p.combined_id !== null && String(p.combined_id).trim()) {
       return 'id:' + String(p.combined_id).trim();
     }
-    if (p && String(p.rmu_display_name || '').trim()) return 'fid:' + String(p.rmu_display_name).trim();
     return String((p && p.rmu_name) || '');
   }
   function rmuGroups() {
     if (!DISTRIBUTION_RMUS.length) return [];
     return DISTRIBUTION_RMUS.map((m, index) => ({
       key: rmuIdentity(m),
-      label: String(m.adms_gss_fid || m.rmu_name || ('RMU ' + (index + 1))),
+      label: String(m.adms_gss_fid || m.rmu_name || (t("deviceFallback") + (index + 1))),
       index: index + 1,
     }));
   }
@@ -1558,15 +1694,34 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
   }
 
   function persist() {
-    // Browser storage is deliberately limited to UI preference only.
-    // Test selections/results/notes must never survive a normal reopen.
-    try { localStorage.setItem(LANG_KEY, lang); } catch (e) { /* ignore */ }
+    // Test editing must never change the language preference. Language is saved
+    // ONLY by setLang(), i.e. after the operator explicitly clicks 中文 / EN.
+    // Test selections/results/notes also remain in-memory unless explicitly
+    // saved to the server or passed through the one-time RMU handoff.
+  }
+
+  function saveLanguagePreference() {
+    // Called only after the operator explicitly clicks 中文 / EN.
+    lang = LANGUAGE_CONTROLLER.select(lang);
+  }
+
+  function pointStateKey(p) {
+    // Stable across add/remove navigation: owner FID + protocol identity.
+    // p.id is kept for backward compatibility, but it can be affected by
+    // duplicate-point de-duplication/order when another RMU is introduced.
+    return [
+      pointRmuIdentity(p),
+      String(p.kind || ""),
+      String(p.table || p.table_no || ""),
+      String(p.addr ?? p.dot_no ?? ""),
+    ].join("|");
   }
 
   function exportState() {
     const points = {};
+    const pointKeys = {};
     state.points.forEach((p) => {
-      points[p.id] = {
+      const saved = {
         selected: !!p.selected,
         result: p.result || "",
         received: p.received === "" || p.received === null || p.received === undefined
@@ -1574,6 +1729,9 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
           : p.received,
         note: p.note || "",
       };
+      points[p.id] = saved;
+      const stableKey = pointStateKey(p);
+      if (stableKey) pointKeys[stableKey] = saved;
     });
     const env = {};
     Object.keys(state.env).forEach((k) => {
@@ -1581,13 +1739,17 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     });
     return {
       station: state.station,
-      lang: lang,
       meta: Object.assign({}, state.meta),
       env: env,
       points: points,
+      point_keys: pointKeys,
       saved_at: new Date().toISOString(),
     };
   }
+
+  // Language is deliberately NOT part of device-navigation handoff.
+  // A full-page device add/remove simply reads the same global localStorage
+  // language again on the next page.
 
   function prepareRmuNavigationHandoff() {
     // Preserve the current in-memory test only across the intentional full-page
@@ -1644,6 +1806,9 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > 10 * 60 * 1000) return false;
       const savedReportId = String(payload.state?.meta?.report_id || "");
       const sourceDefaultReportId = String(payload.source_default_report_id || "");
+      // The RMU handoff restores test data only. It intentionally does not
+      // read or write language; current language always comes from the explicit
+      // global preference selected by the operator.
       applyLoaded(payload.state);
       // If the report number was still the old auto-generated default, use the
       // new payload default so newly added RMUs also appear in the report IDs.
@@ -1676,7 +1841,9 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
 
   function applyLoaded(data) {
     if (!data || typeof data !== "object") return;
-    if (data.lang === "zh" || data.lang === "en") lang = data.lang;
+    // Language is a persistent operator UI preference. Restoring a draft or
+    // the one-time add/remove-device handoff must never change it. Only an
+    // explicit click on 中文 / EN is allowed to change `lang`.
     if (data.meta) {
       Object.assign(state.meta, data.meta);
       if (state.meta.phase) state.meta.phase = PHASE_MAP[state.meta.phase] || state.meta.phase;
@@ -1692,9 +1859,12 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
         }
       });
     }
-    if (data.points) {
+    if (data.points || data.point_keys) {
       state.points.forEach((p) => {
-        const s = data.points[p.id];
+        // Prefer the historical p.id path for compatibility, then fall back to
+        // the stable per-device point key introduced for add/remove navigation.
+        const s = (data.points && data.points[p.id]) ||
+          (data.point_keys && data.point_keys[pointStateKey(p)]);
         if (!s) return;
         if (typeof s.selected === "boolean") p.selected = s.selected;
         if (s.result !== undefined) p.result = s.result;
@@ -1815,15 +1985,15 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       const primaryId = String(primary.name || primary.port || "").trim();
       const backupId = String(backup.name || backup.port || "").trim();
       if (backupId && backupId !== primaryId) {
-        return proto + " | Primary: " + (primaryId || t("dash")) + " | Backup: " + backupId;
+        return proto + " | " + t("channelPrimary") + ": " + (primaryId || t("dash")) + " | " + t("channelBackup") + ": " + backupId;
       }
       return proto + " | " + (primaryId || t("dash"));
     }
     if (state.meta.channel && state.meta.channel.single) {
       return proto + " | " + channelSideSummary("primary");
     }
-    return proto + " | Primary: " + channelSideSummary("primary") +
-      " | Backup: " + channelSideSummary("backup");
+    return proto + " | " + t("channelPrimary") + ": " + channelSideSummary("primary") +
+      " | " + t("channelBackup") + ": " + channelSideSummary("backup");
   }
 
   function fillPhaseVerdictOptions() {
@@ -1959,7 +2129,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
         tr.innerHTML =
           "<td>" + code + "</td>" +
           "<td>" + escapeHtml(t("env" + code)) + "</td>" +
-          "<td>" + escapeHtml(row.result || t("dash")) + "</td>" +
+          "<td>" + escapeHtml(row.result ? resultLabel(row.result) : t("dash")) + "</td>" +
           "<td>" + escapeHtml(row.note || "") + "</td>";
         body.appendChild(tr);
         return;
@@ -1970,7 +2140,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       ENV_RESULTS.forEach((v) => {
         const o = document.createElement("option");
         o.value = v;
-        o.textContent = v || t("dash");
+        o.textContent = v ? resultLabel(v) : t("dash");
         if ((row.result || "") === v) o.selected = true;
         sel.appendChild(o);
       });
@@ -2016,6 +2186,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
 
   function applyStaticI18n() {
     document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+    document.title = t("hdrTitle");
     document.getElementById("hdr-title").textContent = t("hdrTitle");
     document.getElementById("hdr-sub").textContent = tf("hdrSub")(STATION, ST_ID, GENERATED_AT);
     document.getElementById("print-title").textContent = t("printTitle");
@@ -2029,10 +2200,43 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       const key = el.getAttribute("data-i18n-placeholder");
       if (key) el.placeholder = t(key);
     });
+
+    // The distribution-device search block is rendered server-side and uses
+    // data-live-zh / data-live-en markers instead of the main data-i18n keys.
+    // Keep it synchronized from the SAME source of truth (`lang`) as the rest
+    // of the page. This prevents a half-Chinese/half-English page after a full
+    // reload caused by selecting, adding, or removing a device.
+    const english = lang === "en";
+    document.querySelectorAll("[data-live-zh]").forEach((el) => {
+      el.style.display = english ? "none" : "";
+    });
+    document.querySelectorAll("[data-live-en]").forEach((el) => {
+      el.style.display = english ? "" : "none";
+    });
+    const rmuInput = document.getElementById("distribution-rmu-input");
+    if (rmuInput) {
+      rmuInput.placeholder = english
+        ? "e.g. enter a device name or number and select a device"
+        : "例如：输入设备名称或编号后选择设备";
+    }
+    const rmuSearchButton = document.querySelector(".rmu-search-button");
+    if (rmuSearchButton) {
+      rmuSearchButton.setAttribute("aria-label", english ? "Search Database" : "搜索数据库");
+    }
+    document.querySelectorAll(".device-verdict option[data-label-zh][data-label-en]").forEach((option) => {
+      option.textContent = english ? option.dataset.labelEn : option.dataset.labelZh;
+    });
+
     document.getElementById("scale-hint").textContent = tf("scaleHint")(COUNTS);
     fillPhaseVerdictOptions();
     fillFilterOptions();
     fillChannel();
+    if (typeof window.syncPrintDeviceVerdicts === "function") {
+      window.syncPrintDeviceVerdicts();
+    }
+    if (typeof window.applyLiveLanguage === "function") {
+      window.applyLiveLanguage();
+    }
   }
 
   function escapeHtml(value) {
@@ -2082,11 +2286,11 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
         { label: t("kpiTested"), value: all.tested },
         { label: t("kpiUpCoverage"), value: up.coverage + " (" + up.testedFull + "/" + up.total + ")" },
         { label: t("kpiDownCoverage"), value: down.coverage + " (" + down.testedFull + "/" + down.total + ")" },
-        { label: "Pass", value: all.pass, cls: "pass" },
-        { label: "Pass with comments", value: all.passComments, cls: "pass" },
-        { label: "Fail", value: all.fail, cls: "fail" },
-        { label: "Blocked", value: all.blocked },
-        { label: "N/A", value: all.na },
+        { label: t("resultPass"), value: all.pass, cls: "pass" },
+        { label: t("resultConditional"), value: all.passComments, cls: "pass" },
+        { label: t("resultFail"), value: all.fail, cls: "fail" },
+        { label: t("resultBlocked"), value: all.blocked },
+        { label: t("resultNA"), value: all.na },
         { label: t("kpiPassRate"), value: all.rate, cls: "pass" },
       ];
       return {up, down, all, items};
@@ -2101,11 +2305,11 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
         '<th>' + escapeHtml(t("kpiTested")) + '</th>' +
         '<th>' + escapeHtml(t("kpiUpCoverage")) + '</th>' +
         '<th>' + escapeHtml(t("kpiDownCoverage")) + '</th>' +
-        '<th>Pass</th>' +
-        '<th>Pass with comments</th>' +
-        '<th>Fail</th>' +
-        '<th>Blocked</th>' +
-        '<th>N/A</th>' +
+        '<th>' + escapeHtml(t("resultPass")) + '</th>' +
+        '<th>' + escapeHtml(t("resultConditional")) + '</th>' +
+        '<th>' + escapeHtml(t("resultFail")) + '</th>' +
+        '<th>' + escapeHtml(t("resultBlocked")) + '</th>' +
+        '<th>' + escapeHtml(t("resultNA")) + '</th>' +
         '<th>' + escapeHtml(t("kpiPassRate")) + '</th>' +
       '</tr></thead>';
       const body = '<tbody>' + rows.map((row) => {
@@ -2254,7 +2458,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       const recvLabel =
         p.received === true ? t("yes") : p.received === false ? t("no") : t("dash");
       tdRecv.textContent = recvLabel;
-      tdRes.textContent = p.result || t("dash");
+      tdRes.textContent = p.result ? resultLabel(p.result) : t("dash");
       tdNote.textContent = p.note || "";
     } else {
       const selRecv = document.createElement("select");
@@ -2290,7 +2494,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       POINT_RESULTS.forEach((v) => {
         const o = document.createElement("option");
         o.value = v;
-        o.textContent = v || t("resultUnset");
+        o.textContent = v ? resultLabel(v) : t("resultUnset");
         if ((p.result || "") === v) o.selected = true;
         selRes.appendChild(o);
       });
@@ -2498,8 +2702,13 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
   }
 
   function setLang(next) {
+    if (next !== "zh" && next !== "en") return;
     lang = next;
-    persist();
+    saveLanguagePreference();
+    refreshLanguageUi();
+  }
+
+  function refreshLanguageUi() {
     applyStaticI18n();
     fillMeta();
     renderEnv();
@@ -2507,7 +2716,19 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     updateStats();
     renderTable();
     updateSignRole2Ui();
+    window.dispatchEvent(new CustomEvent("report-language-change", {detail: {lang}}));
   }
+
+  // If the operator explicitly changes language in another open app tab,
+  // mirror that already-persisted choice without writing a new preference.
+  window.addEventListener("storage", (event) => {
+    if (event.key !== LANG_KEY) return;
+    const next = event.newValue;
+    if ((next === "zh" || next === "en") && next !== lang) {
+      lang = LANGUAGE_CONTROLLER.sync(next);
+      refreshLanguageUi();
+    }
+  });
 
   function freshClientState() {
     state = {

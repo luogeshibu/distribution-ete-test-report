@@ -43,4 +43,5 @@ def test_runtime_script_searches_then_selects():
     assert "renderSuggestions(items)" in js
     assert "selectionToken(item)" in js
     assert "openRmu(selectedSelector)" in js
-    assert "环网柜搜索失败" in js
+    assert "设备搜索失败" in js
+    assert "Device search failed" in js

@@ -8,7 +8,7 @@ def test_live_script_exposes_idempotent_device_verdict_sync():
     assert "window.syncDeviceVerdicts = syncDeviceVerdicts" in js
     assert "window.syncPrintDeviceVerdicts = syncPrintDeviceVerdicts" in js
     assert "sel.dataset.verdictBound !== '1'" in js
-    assert "cell.textContent = verdictText(saved[key] || saved[legacyKey] || '')" in js
+    assert "cell.textContent = verdictText(saved[key] || saved[idKey] || saved[legacyKey] || '')" in js
 
 
 def test_report_forces_verdict_sync_after_resume_and_before_print_snapshot():

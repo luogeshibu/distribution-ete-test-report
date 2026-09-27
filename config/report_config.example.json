@@ -13,6 +13,6 @@
     "password": ""
   },
   "security": {
-    "print_password": "NARI"
+    "print_password": ""
   }
 }

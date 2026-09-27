@@ -1,9 +1,52 @@
 # Distribution ETE Test Report
 
-ADMS 配网 RMU/RTU 信号端到端核验与投运报告工具。
+V1.2.62
+
+## v1.2.62 navigation-durable global language controller
+
+- Keeps one operator-selected language across the whole application.
+- The current same-tab language is mirrored in `window.name`, a same-origin cookie, and the existing `localStorage` key so a full-page add/remove-device navigation cannot fall back to Chinese if browser storage is unavailable or stale.
+- Only explicit 中文 / EN clicks may choose a new language; report restore, device add/remove, History -> Continue Test, Dashboard/Home navigation, and RMU handoff are language-neutral.
+- The three pages (ETE Test, History, Test Overview) use the same controller and preference.
+- Oracle SQL, device-search SQL, exact-device selection, duplicate-name handling, and read-only query behavior are unchanged.
+
+## v1.2.60 navigation language lock
+
+- Only the explicit `中文 / EN` controls choose a language.
+- A one-time same-tab navigation lock now carries the already-active language across every full-page reload.
+- Repeated device additions/removals, History -> Continue Test, Home, Dashboard, History, refresh, back and forward all preserve the current language.
+- Oracle SQL, device-search SQL, exact-device selection, and read-only protection are unchanged.
+
+## v1.2.59 operator-only global language authority
+
+The current UI language is now controlled **only** by the explicit 中文 / EN buttons. The language selected by the operator is stored in one application-wide `localStorage` key and is shared by the ETE Test, History, and Test Overview pages. Saved reports, server draft restore, History -> Continue Test, add/remove-device handoffs, and ordinary navigation can no longer override it.
+
+This release intentionally does **not** change Oracle SQL, device-search SQL, exact mouse-selected device behavior, duplicate-name handling, or read-only enforcement.
 
 ## Version
-V1.2.44
+V1.2.62
+
+## v1.2.57 strict single-language UI
+
+The operator-selected language is now enforced across the whole workflow. In **EN** mode, all application UI labels, status/result text, live device-search messages, History/Dashboard messages, and exported Dashboard summary reports render in English; in **中文** mode the same UI renders in Chinese. User-entered comments, database device names, signal names, protocol names, file-format names, and organization/product acronyms remain unchanged as data/technical identifiers. The language never changes unless the operator explicitly presses 中文 or EN.
+
+This release is presentation/i18n-only. Oracle remains strictly read-only, and the proven device search SQL, exact mouse-selected device logic, duplicate-name handling, and query path are unchanged.
+
+## v1.2.55 unified language rendering
+
+The main report and the server-rendered Distribution Device Search block now use the same language state. If EN is selected, all live device-search labels, selected-device table headings, verdict choices, hints and Remove actions remain English through device add/remove/reload until 中文 is explicitly selected. This UI-only fix does not change Oracle SQL or query behavior.
+
+
+
+## v1.2.54 sticky language preference
+
+Selecting **EN** or **中文** is now a persistent operator UI preference. Adding/removing a distribution device causes a full-page reload, but it no longer resets the page language. This release intentionally does **not** change Oracle SQL or the device-search/query path.
+
+## v1.2.53 working-search rebase
+
+This release is rebuilt from the user-verified **v1.2.47 working device-search baseline**. The proven Oracle read-only search/selection path and the existing canonical local `config/report_config.json` are preserved. Later UI requirements are layered on top: bilingual History/Dashboard, Device Name/Device Type wording, bilingual Overall Result options, and sticky language preference.
+
+The source package deliberately keeps the local canonical runtime configuration from the working baseline; `.gitignore` continues to exclude `config/report_config.json` so it is not intended for repository commits.
 
 
 ## Exact device selection

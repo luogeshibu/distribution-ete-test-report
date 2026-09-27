@@ -22,7 +22,7 @@ def test_search_api_candidate_contains_combined_id(tmp_path):
     # short RMU name which may be duplicated on different feeders.
     server = Path(__file__).resolve().parents[1] / 'src' / 'distribution_signal_verifier' / 'live_report_server.py'
     text = server.read_text(encoding='utf-8')
-    assert '"combined_id": m.combined_id' in text
+    assert '"combined_id": "" if m.combined_id in (None, "") else str(m.combined_id)' in text
 
 
 def test_clicking_suggestion_adds_exact_selection_token():
@@ -39,10 +39,12 @@ def test_remove_button_is_bound_to_exact_device_identity():
         RmuMapping(combined_id=202, rmu_name='6', adms_gss_fid='JED-CTL-ANS-AH325-6'),
     ]
     html = _render_mapping_section(mapping, ['id:101', 'id:202'])
-    assert 'data-rmu="id:101"' in html
-    assert 'data-rmu="id:202"' in html
-    assert html.count('JED-CTL-ADF-AH315-6') == 1
-    assert html.count('JED-CTL-ANS-AH325-6') == 1
+    assert 'data-rmu="fid:JED-CTL-ADF-AH315-6"' in html
+    assert 'data-rmu="fid:JED-CTL-ANS-AH325-6"' in html
+    assert 'data-rmu-id="id:101"' in html
+    assert 'data-rmu-id="id:202"' in html
+    assert 'JED-CTL-ADF-AH315-6' in html
+    assert 'JED-CTL-ANS-AH325-6' in html
 
 
 def test_print_verdict_keys_are_unique_for_duplicate_short_names():
@@ -51,8 +53,10 @@ def test_print_verdict_keys_are_unique_for_duplicate_short_names():
         RmuMapping(combined_id=202, rmu_name='6', adms_gss_fid='JED-CTL-ANS-AH325-6'),
     ]
     html = _render_print_mapping_table(mapping)
-    assert 'data-rmu="id:101"' in html
-    assert 'data-rmu="id:202"' in html
+    assert 'data-rmu="fid:JED-CTL-ADF-AH315-6"' in html
+    assert 'data-rmu="fid:JED-CTL-ANS-AH325-6"' in html
+    assert 'data-rmu-id="id:101"' in html
+    assert 'data-rmu-id="id:202"' in html
 
 
 def test_report_groups_points_by_combined_id_not_duplicate_rmu_name():

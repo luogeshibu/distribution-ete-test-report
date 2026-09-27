@@ -1,3 +1,99 @@
+# v1.2.62 - 2026-09-27
+
+- Fixed EN -> add device -> Chinese fallback by making the selected language navigation-durable in the same browser tab.
+- Added a single global controller that mirrors the operator-selected value into `window.name`, a same-origin cookie, and `localStorage`; `window.name` is authoritative during same-tab full-page navigation.
+- Only explicit 中文 / EN clicks can choose a new language. Device add/remove, report restore, History -> Continue Test, Dashboard/Home navigation, and RMU state handoff cannot switch it.
+- Oracle SQL, device-search SQL, exact-device selection, duplicate-name handling, and read-only protections are unchanged.
+
+# v1.2.60 - 2026-09-27
+
+- Fixed repeated device navigation falling back from English to Chinese.
+- Added a one-time same-tab navigation language lock that only mirrors the language already active before navigation.
+- Only manual `中文 / EN` clicks choose a language; no other operation can switch it.
+- History -> Continue Test, Home, Dashboard, History, refresh/back/forward, and repeated device add/remove preserve the current language.
+- Oracle/query logic is unchanged and remains read-only.
+
+# v1.2.59 - 2026-09-27
+
+- Fixed History -> Continue Test switching back to the language stored with an older task.
+- The operator-selected language is now controlled only by the explicit 中文 / EN buttons.
+- `localStorage` is the sole language authority across ETE Test, History, and Test Overview; legacy session/navigation language handoffs are ignored.
+- Saved report JSON and add/remove-device state handoffs are language-neutral and cannot change the UI language.
+- No Oracle SQL, device-search SQL, selector/query behavior, duplicate-name handling, or read-only enforcement changed.
+
+# v1.2.58 - 2026-09-27
+
+- Fix: the operator-selected UI language now survives the full-page navigation used when adding/removing a distribution device.
+- EN remains EN and Chinese remains Chinese unless the operator explicitly clicks the other language button.
+- Added a one-time browser-only language navigation handoff; it does not change Oracle SQL, search SQL, selector tokens, or query parameters.
+- History/server draft restore still cannot override the operator's current language.
+
+# v1.2.57
+
+- Fixed language divergence between ETE Test, History, and Test Overview.
+- `localStorage` is now the single authoritative language preference across pages and browser tabs; stale tab-scoped state can no longer override it.
+- Normal test operations (editing points, adding/removing devices, saving progress) no longer write the language preference. Only an explicit 中文 / EN click changes the language.
+- Open tabs synchronize an explicit language change through the browser storage event.
+- No Oracle SQL, device search SQL, read-only guard, or device-selection/query behavior was changed.
+
+# v1.2.56 - 2026-09-27
+
+- Enforced one-language-at-a-time rendering across the complete UI: EN mode shows English application labels/messages/results only; 中文 mode shows Chinese application labels/messages/results only.
+- Fixed remaining mixed-language result/kind labels in the main test page and synchronized live device-search UI with the same language source of truth.
+- History and Dashboard keep the selected language; Dashboard export HTML/PDF now uses the language active when the export is created.
+- Server/API error details are kept in logs while the browser shows only localized user-facing messages, preventing wrong-language raw errors from leaking into the UI.
+- User-entered text and technical/database identifiers are never translated.
+- Oracle SQL, device-search SQL, exact mouse-selected device logic, duplicate-name handling, and read-only enforcement are unchanged.
+
+# v1.2.55 - 2026-09-27
+
+- Fixed mixed Chinese/English rendering on the main ETE page when the operator is already in EN mode.
+- The server-rendered Distribution Device Search block now follows the same `lang` source of truth as the rest of the page, including Device Name/Device Type headings, search labels/hints, Remove, and Overall Result option labels.
+- EN remains EN across device search/add/remove/reload until the operator explicitly clicks 中文; Chinese behaves symmetrically.
+- This release is frontend-only for the fix: Oracle SQL, device-search SQL, query selection logic, and read-only enforcement are unchanged.
+
+# v1.2.54 - 2026-09-27
+
+- Fix language persistence across device add/remove full-page reloads.
+- When the operator selects EN, the test page remains English until 中文 is explicitly selected (and vice versa).
+- Language preference is stored independently in both localStorage and sessionStorage; restoring drafts/handoffs never changes it.
+- No Oracle SQL, device-search SQL, RMU selection query, or database read-only rules were changed in this release.
+
+# v1.2.53 - 2026-09-27
+
+- Rebuilt directly from the user-verified v1.2.47 source baseline where device fuzzy search is confirmed working.
+- Preserved the working canonical local Oracle runtime configuration instead of replacing it with an empty configuration during the source upgrade.
+- Kept the proven read-only Oracle search path and exact mouse-selected device handling, including duplicate short device names.
+- Re-applied the later requirements: Device Name / Device Type terminology, bilingual Overall Result options, bilingual History/Dashboard, and sticky 中文 / EN preference.
+- Oracle remains strictly read-only.
+
+# v1.2.47 - 2026-09-27
+
+- 修复“保存草稿 -> 历史报表 -> 继续测试”后重复短名称设备被再次展开的问题。
+- 根因：历史页此前用 `rmu_name`（如 `6`）重新构造继续测试 URL，导致 Oracle 兼容旧逻辑按短名称匹配，把多个不同馈线但同名为 `6` 的设备一起加载。
+- 继续测试现在优先使用历史记录中的完整 `ADMS_GSS_FID`，生成 `fid:<完整设备名>` 精确选择器；仅对真正的旧记录保留短名称兼容。
+- 若旧历史记录缺少完整 display_name，但仍保留区域/变电站/馈线/RMU 层级，会用这些字段重建完整 FID 后精确恢复。
+- 修复历史归档中每台设备“总评”的键匹配：优先按完整 FID / COMBINED_ID，再兼容旧短名称，避免多个同名 RMU 共用或丢失总评。
+- Oracle 行为不变，仍严格只读，仅允许 SELECT/WITH SELECT。
+
+# v1.2.46 - 2026-09-27
+
+- 修复新增第二个配网设备后，已在第一个设备填写的测试结果看起来被清空/分组为 0 的问题。
+- 根因之一是多设备页面的分组仍优先使用 `COMBINED_ID`；当 Oracle ID 超过 JavaScript 安全整数范围时，映射 ID 与点表中的字符串 ID 可能不一致。现在屏幕端多设备分组统一优先使用鼠标选中的完整 `ADMS_GSS_FID`。
+- `distribution_mappings[].combined_id` 在浏览器 payload 中强制转换为字符串，彻底避免 JSON/JavaScript 大整数精度损失。
+- 新增稳定的点状态键：`完整设备 FID + 点类型 + 表号 + 地址`。新增/删除设备发生整页重载时，除旧的 point id 外还会用稳定键恢复原设备的勾选、是否收到、Pass/Fail 和备注。
+- 新增设备只初始化新增设备自己的点，不重置已有设备已经填写的测试状态。
+- Oracle 行为不变，仍严格只读，仅允许 SELECT/WITH SELECT。
+
+# v1.2.45 - 2026-09-27
+
+- 修复模糊搜索后点击某一设备却可能加载到其他设备的问题。
+- 浏览器选择设备时以鼠标点击的完整 `ADMS_GSS_FID` 为唯一选择依据，不再优先使用 `COMBINED_ID`。
+- 新增按完整 `ADMS_GSS_FID` 精确只读查询 Oracle 的路径；最后一段仍对应实际 RMU 名称/编号，但不会仅凭重复的短编号做模糊扩展。
+- 保留旧版 `id:<COMBINED_ID>` 选择器兼容，历史链接/草稿仍可继续使用。
+- 搜索 API 中 `COMBINED_ID` 强制序列化为字符串，避免浏览器大整数精度问题。
+- Oracle 仍严格只读，仅允许 SELECT/WITH SELECT。
+
 # v1.2.44 - 2026-09-27
 
 - Fixed fuzzy RMU selection so clicking one search result adds **only the exact device that was clicked**, even when several feeders contain the same short RMU name (for example `6`).
