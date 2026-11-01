@@ -13,7 +13,7 @@ def test_pdf_stats_uses_summary_table_and_screen_cards_remain():
 def test_print_stats_summary_table_contains_expected_columns():
     template = Path("web/distribution_report.html").read_text(encoding="utf-8")
     block = template.split('function printStatsSummaryTable(rows)', 1)[1].split('if (groups.length > 1)', 1)[0]
-    for text in ['printStatsDevice', 'kpiPlanned', 'kpiTested', 'kpiUpCoverage', 'kpiDownCoverage', 'Pass with comments', 'Blocked', 'N/A', 'kpiPassRate']:
+    for text in ['printStatsDevice', 'kpiPlanned', 'kpiTested', 'kpiUpCoverage', 'kpiDownCoverage', 'resultPass', 'resultConditional', 'resultFail', 'resultBlocked', 'resultNA', 'kpiPassRate']:
         assert text in block
 
 

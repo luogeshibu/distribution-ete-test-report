@@ -246,14 +246,89 @@ LEFT JOIN d5000.sys_menu_info sm
     return sql, {f"combined_id_{index}": value for index, value in enumerate(ids)}
 
 
-def _mapping_selector(item: RmuMapping) -> str:
-    """Return the stable browser selector used for add/remove/verdict state."""
+def build_rmu_fid_sql(adms_gss_fids: Sequence[str]) -> tuple[str, dict[str, Any]]:
+    """Load mouse-selected devices by exact full ADMS_GSS_FID.
 
+    The fuzzy search is only for discovering candidates. Once the operator
+    clicks one visible candidate, the complete displayed FID is carried back to
+    the server and matched exactly. This makes the selected row authoritative
+    even when many devices share the same final RMU number such as ``6``.
+    """
+
+    fids = [_clean_text(value) for value in adms_gss_fids if _clean_text(value)]
+    if not fids:
+        raise InputError("至少要提供一个 ADMS_GSS_FID")
+    list_sql = "\n            UNION ALL\n            ".join(
+        f"SELECT :adms_gss_fid_{index} AS adms_gss_fid FROM dual"
+        for index in range(len(fids))
+    )
+    sql = f"""
+WITH fid_list AS
+(
+    {list_sql}
+)
+SELECT
+    comb.id AS "COMBINED_ID",
+    TRIM(sca.name || '-' || sub.name || '-' || feeder.name || '-' || comb.name) AS "ADMS_GSS_FID",
+    TRIM(comb.name) AS "RMU_NAME",
+    TRIM(feeder.name) AS "FEEDER_NAME",
+    TRIM(sub.name) AS "SUBSTATION_NAME",
+    TRIM(sca.name) AS "SUBCONTROLAREA_NAME",
+    comb.combined_type AS "COMBINED_TYPE",
+    comb.st_string_07 AS "FUNCTION LOCATION",
+    REGEXP_REPLACE(
+        REGEXP_SUBSTR(sm.display_value, '^[^(]+'),
+        '-NOP$', ''
+    ) AS "RMU_TYPE",
+    CASE
+        WHEN comb.combined_type BETWEEN 21 AND 25
+          OR comb.combined_type BETWEEN 41 AND 45
+          OR comb.combined_type BETWEEN 61 AND 63
+        THEN 'SMART'
+        WHEN comb.combined_type IS NOT NULL THEN 'NONSMART'
+        ELSE NULL
+    END AS "SMART_TYPE",
+    CASE
+        WHEN comb.combined_type BETWEEN 31 AND 35
+          OR comb.combined_type BETWEEN 41 AND 45
+        THEN 'NOP'
+        ELSE NULL
+    END AS "NOP"
+FROM fid_list l
+JOIN d5000.dms_combined_device comb ON 1 = 1
+LEFT JOIN d5000.dms_feeder_device feeder
+  ON feeder.id = comb.feeder_id
+LEFT JOIN d5000.substation sub
+  ON sub.id = feeder.st_id
+LEFT JOIN d5000.subcontrolarea sca
+  ON sca.id = sub.subarea_id
+LEFT JOIN d5000.sys_menu_info sm
+  ON sm.menu_name = 'Switch station type'
+ AND sm.actual_value = comb.combined_type
+WHERE UPPER(TRIM(sca.name || '-' || sub.name || '-' || feeder.name || '-' || comb.name))
+      = UPPER(TRIM(l.adms_gss_fid))
+""".strip()
+    return sql, {f"adms_gss_fid_{index}": value for index, value in enumerate(fids)}
+
+
+def _mapping_id_selector(item: RmuMapping) -> str:
+    combined_id = _clean_text(item.combined_id)
+    return f"id:{combined_id}" if combined_id else ""
+
+
+def _mapping_selector(item: RmuMapping) -> str:
+    """Return the stable browser selector used for add/remove/verdict state.
+
+    Prefer the complete displayed FID because it is exactly what the operator
+    clicked. COMBINED_ID remains an internal database identity and an old-link
+    compatibility fallback only.
+    """
+
+    if _clean_text(item.adms_gss_fid):
+        return f"fid:{_clean_text(item.adms_gss_fid)}"
     combined_id = _clean_text(item.combined_id)
     if combined_id:
         return f"id:{combined_id}"
-    if _clean_text(item.adms_gss_fid):
-        return f"fid:{_clean_text(item.adms_gss_fid)}"
     return _clean_text(item.rmu_name)
 
 
@@ -262,7 +337,7 @@ def build_rmu_search_sql(keyword: str, limit: int = 50) -> tuple[str, dict[str, 
 
     value = _clean_text(keyword)
     if not value:
-        raise InputError("请输入环网柜名称关键字")
+        raise InputError("请输入设备名称或编号关键字")
     safe_limit = max(1, min(int(limit), 100))
     # Keep the bind in a one-row CTE so Oracle sees it only once.  The search
     # itself is intentionally a substring match: entering 346 returns 34661,
@@ -639,15 +714,16 @@ def assert_oracle_read_only_sql(sql: str) -> None:
 
 
 def query_rmu_mapping(connection: Any, rmu_names: Sequence[str]) -> list[RmuMapping]:
-    """Resolve selected devices, preferring exact ``id:<COMBINED_ID>`` tokens.
+    """Resolve selected devices, preferring the exact row the operator clicked.
 
-    Legacy plain RMU-name selectors remain supported for old bookmarks/reports.
-    New browser selections always use COMBINED_ID so clicking one fuzzy-search
-    candidate can never expand into every device that shares the same short
-    RMU name.
+    New browser selections use ``fid:<full ADMS_GSS_FID>``. The full displayed
+    FID is matched exactly in Oracle, so the final RMU number may be reused on
+    other feeders without selecting the wrong device. ``id:<COMBINED_ID>`` and
+    plain names are retained only for backward compatibility.
     """
 
     selectors = [_clean_text(value) for value in rmu_names if _clean_text(value)]
+    exact_fids = [value[4:] for value in selectors if value.lower().startswith("fid:") and value[4:].strip()]
     exact_ids = [value[3:] for value in selectors if value.lower().startswith("id:") and value[3:].strip()]
     legacy_names = [value for value in selectors if not value.lower().startswith(("id:", "fid:"))]
     rows: list[RmuMapping] = []
@@ -662,6 +738,9 @@ def query_rmu_mapping(connection: Any, rmu_names: Sequence[str]) -> list[RmuMapp
         finally:
             cursor.close()
 
+    if exact_fids:
+        sql, binds = build_rmu_fid_sql(exact_fids)
+        rows.extend(execute(sql, binds))
     if exact_ids:
         sql, binds = build_rmu_id_sql(exact_ids)
         rows.extend(execute(sql, binds))
@@ -669,9 +748,10 @@ def query_rmu_mapping(connection: Any, rmu_names: Sequence[str]) -> list[RmuMapp
         sql, binds = build_rmu_sql(legacy_names)
         rows.extend(execute(sql, binds))
 
-    # Deduplicate and retain the operator's selection order.  FID tokens are a
-    # JSON/offline fallback and are resolved from already returned rows only.
+    # Deduplicate and retain the operator's selection order. The full FID is
+    # authoritative for new UI selections; COMBINED_ID still resolves old URLs.
     by_selector = {_mapping_selector(item): item for item in rows}
+    by_id = {_mapping_id_selector(item): item for item in rows if _mapping_id_selector(item)}
     by_name: dict[str, list[RmuMapping]] = {}
     by_fid: dict[str, RmuMapping] = {}
     for item in rows:
@@ -682,7 +762,7 @@ def query_rmu_mapping(connection: Any, rmu_names: Sequence[str]) -> list[RmuMapp
     ordered: list[RmuMapping] = []
     seen: set[str] = set()
     for selector in selectors:
-        item = by_selector.get(selector) or by_fid.get(selector)
+        item = by_selector.get(selector) or by_fid.get(selector) or by_id.get(selector)
         if item is not None:
             key = _mapping_selector(item)
             if key not in seen:
@@ -824,7 +904,14 @@ def build_payload(
         "generated_at": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
         "counts": table_counts,
         "points": normalized_points,
-        "distribution_mappings": [asdict(item) for item in mapping],
+        # COMBINED_ID may exceed JavaScript's safe integer range.  Keep it as
+        # text in the browser payload so multi-device grouping can never lose
+        # precision after JSON.parse().  The full ADMS_GSS_FID remains the
+        # primary browser identity for newly selected devices.
+        "distribution_mappings": [
+            {**asdict(item), "combined_id": _clean_text(item.combined_id)}
+            for item in mapping
+        ],
         "meta_defaults": {
             "report_id": report_id or default_report_id,
             "station": station, "st_id": area, "phase": "commission",
@@ -839,37 +926,40 @@ def build_payload(
 
 def _render_mapping_section(mapping: Sequence[RmuMapping], rmu_names: Sequence[str] = ()) -> str:
     # Presentation only. RMU SQL/query logic is intentionally unchanged.
-    headers = ["序号", "RMU名称", "RMU类型", "SMART", "NOP", "FUNCTION LOCATION", "IP", "规约", "总评", "操作"]
-    en_headers = ["No.", "RMU Name", "RMU Type", "SMART", "NOP", "FUNCTION LOCATION", "IP", "Protocol", "Overall Result", "Action"]
+    headers = ["序号", "设备名称", "设备类型", "SMART", "NOP", "FUNCTION LOCATION", "IP", "规约", "总评", "操作"]
+    en_headers = ["No.", "Device Name", "Device Type", "SMART", "NOP", "FUNCTION LOCATION", "IP", "Protocol", "Overall Result", "Action"]
     rows = []
     for index, item in enumerate(mapping, 1):
         rmu_key = _mapping_selector(item)
+        id_rmu_key = _mapping_id_selector(item)
         legacy_rmu_key = _clean_text(item.rmu_name)
         cells = [str(index), item.adms_gss_fid or item.rmu_name, item.rmu_type, item.smart_type,
                  item.nop, item.function_location, item.ip, item.protocol_name]
         row_cells = "".join(f"<td>{html.escape(_clean_text(cell))}</td>" for cell in cells)
-        verdict = (f'<td><select class="device-verdict compact" data-rmu="{html.escape(rmu_key, quote=True)}" data-rmu-legacy="{html.escape(legacy_rmu_key, quote=True)}">'
-                   '<option value="">（未选）</option><option value="pass">通过</option>'
-                   '<option value="conditional">Pass with comments</option><option value="fail">不通过</option>'
+        verdict = (f'<td><select class="device-verdict compact" data-rmu="{html.escape(rmu_key, quote=True)}" data-rmu-id="{html.escape(id_rmu_key, quote=True)}" data-rmu-legacy="{html.escape(legacy_rmu_key, quote=True)}">'
+                   '<option value="" data-label-zh="（未选）" data-label-en="(Not selected)">（未选）</option>'
+                   '<option value="pass" data-label-zh="通过" data-label-en="Pass">通过</option>'
+                   '<option value="conditional" data-label-zh="通过（带备注）" data-label-en="Pass with comments">通过（带备注）</option>'
+                   '<option value="fail" data-label-zh="不通过" data-label-en="Fail">不通过</option>'
                    '</select></td>')
-        remove_button = (f'<td><button type="button" class="rmu-remove-button compact" data-rmu="{html.escape(rmu_key, quote=True)}">'
+        remove_button = (f'<td><button type="button" class="rmu-remove-button compact" data-rmu="{html.escape(rmu_key, quote=True)}" data-rmu-id="{html.escape(id_rmu_key, quote=True)}">'
                          '<span data-live-zh="">移除</span><span data-live-en="" style="display:none">Remove</span>'
                          '</button></td>')
         rows.append("<tr>" + row_cells + verdict + remove_button + "</tr>")
-    body = "".join(rows) or '<tr><td colspan="10"><span data-live-zh="">未查询到匹配的环网柜</span><span data-live-en="" style="display:none">No matching RMU was found</span></td></tr>'
+    body = "".join(rows) or '<tr><td colspan="10"><span data-live-zh="">未查询到匹配的设备</span><span data-live-en="" style="display:none">No matching device was found</span></td></tr>'
     head = "".join(f'<th><span data-live-zh="">{html.escape(zh)}</span><span data-live-en="" style="display:none">{html.escape(en)}</span></th>' for zh, en in zip(headers, en_headers))
     rmu_value = html.escape(",".join(rmu_names), quote=True)
     has_rmu_query = any(_clean_text(name) for name in rmu_names)
     database_result = ""
     if has_rmu_query:
-        database_result = f'''\n    <div class="hint"><span data-live-zh="">已选设备：可继续模糊搜索追加环网柜，也可逐条移除；总评按设备分别填写。</span><span data-live-en="" style="display:none">Selected devices: continue fuzzy search to append RMUs, or remove them individually. Overall result is recorded per device.</span></div>\n    <div class="table-wrap"><table class="points" id="selected-rmu-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'''
+        database_result = f'''\n    <div class="hint"><span data-live-zh="">已选设备：可继续模糊搜索追加设备，也可逐条移除；总评按设备分别填写。</span><span data-live-en="" style="display:none">Selected devices: continue fuzzy search to add devices, or remove them individually. Overall result is recorded per device.</span></div>\n    <div class="table-wrap"><table class="points" id="selected-rmu-table"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'''
     return f"""
   <section class="card no-print" id="distribution-rmu-map">
     <h2><span data-live-zh="">1. 配网设备查询</span><span data-live-en="" style="display:none">1. Distribution Device Search</span></h2>
     <form id="distribution-rmu-form" class="toolbar rmu-search-toolbar">
       <label class="field rmu-name-field" style="min-width:280px;flex:1">
-        <span data-live-zh="">环网柜名称（RMU Name）</span><span data-live-en="" style="display:none">RMU Name</span>
-        <input id="distribution-rmu-input" value="" data-selected-rmus="{rmu_value}" placeholder="例如：输入 346 后选择环网柜，可连续添加多个" autocomplete="off">
+        <span data-live-zh="">设备名称</span><span data-live-en="" style="display:none">Device Name</span>
+        <input id="distribution-rmu-input" value="" data-selected-rmus="{rmu_value}" placeholder="例如：输入设备名称或编号后选择设备，可连续添加多个" autocomplete="off">
         <div id="rmu-suggestions" class="rmu-suggestions" hidden></div>
       </label>
       <button type="submit" class="rmu-search-button" aria-label="搜索数据库">
@@ -884,17 +974,18 @@ def _render_mapping_section(mapping: Sequence[RmuMapping], rmu_names: Sequence[s
 
 
 def _render_print_mapping_table(mapping: Sequence[RmuMapping]) -> str:
-    headers = ["序号", "RMU名称", "RMU类型", "SMART", "NOP", "FUNCTION LOCATION", "IP", "规约", "总评"]
-    en_headers = ["No.", "RMU Name", "RMU Type", "SMART", "NOP", "FUNCTION LOCATION", "IP", "Protocol", "Overall Result"]
+    headers = ["序号", "设备名称", "设备类型", "SMART", "NOP", "FUNCTION LOCATION", "IP", "规约", "总评"]
+    en_headers = ["No.", "Device Name", "Device Type", "SMART", "NOP", "FUNCTION LOCATION", "IP", "Protocol", "Overall Result"]
     head = "".join(f'<th><span data-live-zh="">{html.escape(zh)}</span><span data-live-en="" style="display:none">{html.escape(en)}</span></th>' for zh, en in zip(headers, en_headers))
     rows = []
     for index, item in enumerate(mapping, 1):
         rmu_key = html.escape(_mapping_selector(item), quote=True)
+        id_rmu_key = html.escape(_mapping_id_selector(item), quote=True)
         legacy_rmu_key = html.escape(_clean_text(item.rmu_name), quote=True)
         cells = [str(index), item.adms_gss_fid or item.rmu_name, item.rmu_type, item.smart_type,
                  item.nop, item.function_location, item.ip, item.protocol_name]
         row = "".join(f"<td>{html.escape(_clean_text(cell))}</td>" for cell in cells)
-        row += f'<td class="print-device-verdict" data-rmu="{rmu_key}" data-rmu-legacy="{legacy_rmu_key}">—</td>'
+        row += f'<td class="print-device-verdict" data-rmu="{rmu_key}" data-rmu-id="{id_rmu_key}" data-rmu-legacy="{legacy_rmu_key}">—</td>'
         rows.append("<tr>" + row + "</tr>")
     body = "".join(rows) or '<tr><td colspan="9">—</td></tr>'
     colgroup = (
@@ -999,7 +1090,7 @@ def render_report_text(
             'hdrTitle: "E2E 测试报告 · ADMS"': 'hdrTitle: "配网设备信号端到端测试报告 · ADMS"',
             'hdrSub: (s, id, t) => `站 ${s} · ${id} · 生成 ${t}`':
                 f'hdrSub: (s, id, t) => `配网设备 · 版本 v{version_text} · 生成 ${{t}}`',
-            'printTitle: "End-to-End Test Report（ADMS）"':
+            'printTitle: "端到端测试报告（ADMS）"':
                 'printTitle: "配网设备信号端到端测试报告"',
             'secEnv: "环境与前置条件"': 'secEnv: "配网设备环境与前置条件"',
             'secStats: "测试统计"': 'secStats: "RTU 信号测试统计"',

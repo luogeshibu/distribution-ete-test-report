@@ -60,7 +60,8 @@ def test_browser_does_not_persist_or_auto_restore_test_results_on_normal_open():
     report = Path('web/distribution_report.html').read_text(encoding='utf-8')
     assert 'localStorage.setItem(STORAGE_KEY, JSON.stringify(exportState()))' not in report
     assert 'localStorage.getItem(STORAGE_KEY)' not in report
-    assert 'localStorage.setItem(LANG_KEY, lang)' in report
+    assert 'DistributionLanguageController' in report
+    assert 'localStorage.setItem(key, current)' in report
     assert 'localStorage.removeItem(STORAGE_KEY)' in report
     assert 'if (!RESUME_REPORT_UUID) return false;' in report
     # v1.2.41 allows only a one-time same-tab handoff while adding/removing an RMU.

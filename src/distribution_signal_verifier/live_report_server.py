@@ -211,6 +211,13 @@ def _html_add_root_class(html_text: str, class_name: str) -> str:
     return html_text[:match.start()] + new_tag + html_text[match.end():]
 
 
+def _formal_print_html(html_text: str) -> str:
+    """Suppress legacy draft watermark CSS in formal archived output."""
+    html_text = _html_add_root_class(html_text, "print-final")
+    override = '<style id="formal-print-no-watermark">@media print {html.print-final body::before {content:none!important;display:none!important}}</style>'
+    return re.sub(r"</head\s*>", lambda match: override + match.group(0), html_text, count=1, flags=re.IGNORECASE)
+
+
 def _render_pdf_with_browser(html_path: Path, pdf_path: Path) -> bool:
     browser = _find_print_browser()
     if browser is None:
@@ -276,11 +283,120 @@ class LiveDataProvider:
 
     def archive_report(self, data: Mapping[str, Any], client_ip: str = "") -> dict[str, Any]:
         is_draft = bool(data.get("is_draft"))
+        if not is_draft and isinstance(data.get("html"), str):
+            data = dict(data, html=_formal_print_html(data["html"]))
         return self.report_store.save_report(
             data,
             client_ip=client_ip,
             software_version=_application_version(),
             pdf_renderer=None if is_draft else _render_pdf_with_browser,
+        )
+
+    @staticmethod
+    def _json_snapshot(data: Mapping[str, Any]) -> dict[str, Any]:
+        raw = data.get("snapshot") if isinstance(data.get("snapshot"), Mapping) else data
+        if not isinstance(raw, Mapping):
+            raise ValueError("invalid JSON snapshot")
+        snapshot = json.loads(json.dumps(dict(raw), ensure_ascii=False))
+        if not isinstance(snapshot.get("meta"), dict) and not isinstance(snapshot.get("points"), dict):
+            raise ValueError("unsupported JSON format")
+        return snapshot
+
+    @staticmethod
+    def _legacy_report_fid(snapshot: Mapping[str, Any]) -> str:
+        meta = snapshot.get("meta") if isinstance(snapshot.get("meta"), Mapping) else {}
+        report_id = str(meta.get("report_id") or "").strip()
+        match = re.fullmatch(r"E2E-(.+)-(\d{8})", report_id, flags=re.IGNORECASE)
+        return match.group(1).strip() if match else ""
+
+    @staticmethod
+    def _legacy_point_combined_ids(snapshot: Mapping[str, Any]) -> list[str]:
+        points = snapshot.get("points") if isinstance(snapshot.get("points"), Mapping) else {}
+        result: list[str] = []
+        for key in points:
+            prefix = str(key).split(":", 1)[0].strip()
+            if prefix and prefix.isdigit() and prefix not in result:
+                result.append(prefix)
+        return result
+
+    @staticmethod
+    def _minimal_legacy_mapping(snapshot: Mapping[str, Any], fid: str, combined_id: str = "") -> dict[str, Any]:
+        meta = snapshot.get("meta") if isinstance(snapshot.get("meta"), Mapping) else {}
+        parts = [part for part in fid.split("-") if part]
+        st_id = str(meta.get("st_id") or "").strip()
+        station = str(meta.get("station") or snapshot.get("station") or "").strip()
+        rmu_name = parts[-1] if parts else ""
+        feeder = ""
+        if station and station in parts:
+            index = parts.index(station)
+            if index + 1 < len(parts) - 1:
+                feeder = parts[index + 1]
+        if not feeder and len(parts) >= 2:
+            feeder = parts[-2]
+        channel = meta.get("channel") if isinstance(meta.get("channel"), Mapping) else {}
+        primary = channel.get("primary") if isinstance(channel.get("primary"), Mapping) else {}
+        return {
+            "combined_id": combined_id,
+            "rmu_name": rmu_name,
+            "display_name": fid or rmu_name,
+            "adms_gss_fid": fid or rmu_name,
+            "rmu_type": "",
+            "smart_type": "",
+            "nop": "",
+            "function_location": "",
+            "feeder_name": feeder,
+            "substation_name": station,
+            "subcontrolarea_name": st_id,
+            "ip": str(primary.get("name") or "").strip(),
+            "protocol_name": str(channel.get("protocol") or "").strip(),
+        }
+
+    def normalize_import_snapshot(self, data: Mapping[str, Any]) -> dict[str, Any]:
+        """Normalize current and historical portable JSON without changing SQL.
+
+        Old JSON (pre-history archive) did not contain distribution_mappings.
+        Reconstruct the exact device from its report number / COMBINED_ID using
+        the existing read-only mapping query.  If Oracle is unavailable, retain
+        enough FID metadata for History -> Continue Test to resolve it later.
+        """
+        snapshot = self._json_snapshot(data)
+        snapshot["network"] = str(snapshot.get("network") or "distribution")
+        existing = snapshot.get("distribution_mappings")
+        mappings = [item for item in existing if isinstance(item, Mapping)] if isinstance(existing, list) else []
+        if mappings:
+            snapshot["distribution_mappings"] = [dict(item) for item in mappings]
+            return snapshot
+
+        fid = self._legacy_report_fid(snapshot)
+        combined_ids = self._legacy_point_combined_ids(snapshot)
+        selectors: list[str] = []
+        if fid:
+            selectors.append("fid:" + fid)
+        selectors.extend("id:" + value for value in combined_ids)
+
+        resolved: list[RmuMapping] = []
+        if selectors:
+            try:
+                resolved = self.mappings(selectors)
+            except Exception:
+                LOGGER.exception("legacy JSON device resolution failed; preserving portable metadata")
+
+        if resolved:
+            snapshot["distribution_mappings"] = [self._mapping_record(item) for item in resolved]
+        elif fid:
+            snapshot["distribution_mappings"] = [
+                self._minimal_legacy_mapping(snapshot, fid, combined_ids[0] if combined_ids else "")
+            ]
+        else:
+            snapshot["distribution_mappings"] = []
+        return snapshot
+
+    def import_json_report(self, data: Mapping[str, Any], client_ip: str = "") -> dict[str, Any]:
+        snapshot = self.normalize_import_snapshot(data)
+        return self.report_store.import_json_snapshot(
+            snapshot,
+            client_ip=client_ip,
+            software_version=_application_version(),
         )
 
     def generate_report_pdf(self, report_uuid: str) -> dict[str, Any]:
@@ -303,16 +419,12 @@ class LiveDataProvider:
         try:
             staging_pdf.unlink(missing_ok=True)
             staging_html.unlink(missing_ok=True)
-            if is_draft:
-                html_text = html_path.read_text(encoding="utf-8")
-                staging_html.write_text(
-                    _html_add_root_class(html_text, "print-draft"),
-                    encoding="utf-8",
-                )
-                source_html = staging_html
+            staging_html.write_text(_formal_print_html(html_path.read_text(encoding="utf-8")), encoding="utf-8")
+            source_html = staging_html
             if not _render_pdf_with_browser(source_html, staging_pdf):
                 raise ValueError("PDF 生成失败，请检查服务端 Edge / Chrome / Chromium。")
             staging_pdf.replace(pdf_path)
+            pdf_path.with_suffix(".watermark-free").write_text("1", encoding="ascii")
             saved = self.report_store.register_report_pdf(report_uuid, pdf_path)
         finally:
             staging_pdf.unlink(missing_ok=True)
@@ -516,7 +628,7 @@ class LiveDataProvider:
             matches = [normalize_mapping(row) for row in self._execute_rows(sql, binds)]
         return [
             {
-                "combined_id": m.combined_id,
+                "combined_id": "" if m.combined_id in (None, "") else str(m.combined_id),
                 "rmu_name": m.rmu_name,
                 "adms_gss_fid": m.adms_gss_fid,
                 "rmu_type": m.rmu_type,
@@ -743,7 +855,13 @@ class LiveDataProvider:
         }
 
     @staticmethod
-    def _summary_report_html(summary: Mapping[str, Any]) -> str:
+    def _summary_report_html(summary: Mapping[str, Any], lang: str = "zh") -> str:
+        lang = "en" if str(lang).lower() == "en" else "zh"
+        is_en = lang == "en"
+
+        def tx(zh: str, en: str) -> str:
+            return en if is_en else zh
+
         def esc(value: Any) -> str:
             return html_lib.escape(str(value if value not in (None, "") else "—"))
 
@@ -754,8 +872,20 @@ class LiveDataProvider:
         def rate(value: Any) -> str:
             return "—" if value in (None, "") else f"{value}%"
 
+        status_labels = {
+            "tested": tx("已调试", "Tested"),
+            "in_progress": tx("调试中", "In Progress"),
+            "untested": tx("未调试", "Untested"),
+        }
+        verdict_labels = {
+            "pass": tx("通过", "Pass"),
+            "conditional": tx("通过（带备注）", "Pass with comments"),
+            "fail": tx("失败", "Fail"),
+        }
+
         feeders = summary.get("feeders") if isinstance(summary.get("feeders"), list) else []
         devices = summary.get("devices") if isinstance(summary.get("devices"), list) else []
+        no_data = tx("无数据", "No data")
         feeder_rows = "".join(
             "<tr>"
             + "".join(
@@ -764,46 +894,63 @@ class LiveDataProvider:
             )
             + f"<td>{esc(rate(item.get('completion_rate')))}</td><td>{esc(rate(item.get('pass_rate')))}</td></tr>"
             for item in feeders if isinstance(item, Mapping)
-        ) or '<tr><td colspan="10">无数据</td></tr>'
-        device_rows = "".join(
-            "<tr>"
-            + "".join(
-                f"<td>{esc(item.get(key))}</td>"
-                for key in (
-                    "subcontrolarea_name", "substation_name", "feeder_name", "display_name",
-                    "rmu_type", "status", "verdict", "tested_at", "lead"
-                )
-            )
-            + "</tr>"
-            for item in devices if isinstance(item, Mapping)
-        ) or '<tr><td colspan="9">无数据</td></tr>'
+        ) or f'<tr><td colspan="10">{esc(no_data)}</td></tr>'
+
+        device_rows_parts: list[str] = []
+        for item in devices:
+            if not isinstance(item, Mapping):
+                continue
+            values = [
+                item.get("subcontrolarea_name"),
+                item.get("substation_name"),
+                item.get("feeder_name"),
+                item.get("display_name"),
+                item.get("rmu_type"),
+                status_labels.get(str(item.get("status") or ""), item.get("status")),
+                verdict_labels.get(str(item.get("verdict") or ""), item.get("verdict")),
+                item.get("tested_at"),
+                item.get("lead"),
+            ]
+            device_rows_parts.append("<tr>" + "".join(f"<td>{esc(value)}</td>" for value in values) + "</tr>")
+        device_rows = "".join(device_rows_parts) or f'<tr><td colspan="9">{esc(no_data)}</td></tr>'
+
         cards = [
-            ("智能设备总数" if coverage_available else "历史测试设备", totals.get("total", 0)),
-            ("已调试", totals.get("tested", 0)),
-            ("调试中", totals.get("in_progress", 0)),
-            ("未调试", totals.get("untested")),
-            ("通过", totals.get("passed", 0)),
-            ("Pass with comments", totals.get("conditional", 0)),
-            ("失败", totals.get("failed", 0)),
-            ("完成率", rate(totals.get("completion_rate"))),
-            ("通过率", rate(totals.get("pass_rate"))),
+            (tx("智能设备总数", "Total SMART Devices") if coverage_available else tx("历史测试设备", "Historical Test Devices"), totals.get("total", 0)),
+            (tx("已调试", "Tested"), totals.get("tested", 0)),
+            (tx("调试中", "In Progress"), totals.get("in_progress", 0)),
+            (tx("未调试", "Untested"), totals.get("untested")),
+            (tx("通过", "Pass"), totals.get("passed", 0)),
+            (tx("通过（带备注）", "Pass with comments"), totals.get("conditional", 0)),
+            (tx("失败", "Fail"), totals.get("failed", 0)),
+            (tx("完成率", "Completion Rate"), rate(totals.get("completion_rate"))),
+            (tx("通过率", "Pass Rate"), rate(totals.get("pass_rate"))),
         ]
         cards_html = "".join(
             f'<div class="card"><span>{esc(key)}</span><strong>{esc(value)}</strong></div>'
             for key, value in cards
         )
-        return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Distribution ETE Overall Report</title>
+        html_lang = "en" if is_en else "zh-CN"
+        title = tx("配网 ETE 总体测试报告 · ADMS", "Distribution ETE Overall Test Report · ADMS")
+        scope_text = (
+            f"{tx('区域', 'Area')}：{esc(scope.get('subcontrolarea'))}　"
+            f"{tx('变电站', 'Substation')}：{esc(scope.get('substation'))}　"
+            f"{tx('馈线', 'Feeder')}：{esc(scope.get('feeder'))}　"
+            f"{tx('统计日期', 'Date Range')}：{esc(scope.get('date_from'))} ~ {esc(scope.get('date_to'))}　"
+            f"{tx('生成时间', 'Generated At')}：{esc(summary.get('generated_at'))}"
+        )
+        feeder_total = tx("总设备", "Total Devices") if coverage_available else tx("历史设备", "Historical Devices")
+        return f'''<!doctype html><html lang="{html_lang}"><head><meta charset="utf-8"><title>{esc(title)}</title>
 <style>@page{{size:A4 landscape;margin:12mm}}body{{font-family:Arial,"Microsoft YaHei",sans-serif;color:#172a25;font-size:11px}}h1{{color:#0c604b}}.scope{{padding:8px 0 12px;border-bottom:1px solid #ccd8d3}}.cards{{display:grid;grid-template-columns:repeat(9,1fr);gap:6px;margin:12px 0}}.card{{border:1px solid #c9d8d2;background:#eef7f4;padding:8px}}.card span{{display:block;color:#5d6c67;font-size:9px}}.card strong{{font-size:17px}}table{{width:100%;border-collapse:collapse;margin:8px 0 16px;table-layout:fixed}}th,td{{border:1px solid #cbd7d3;padding:5px;text-align:center;word-break:break-word}}th{{background:#dfeee9}}h2{{margin:16px 0 6px}}</style></head><body>
-<h1>配网 ETE 总体测试报告 · ADMS</h1>
-<div class="scope">区域：{esc(scope.get('subcontrolarea'))}　变电站：{esc(scope.get('substation'))}　馈线：{esc(scope.get('feeder'))}　统计日期：{esc(scope.get('date_from'))} ~ {esc(scope.get('date_to'))}　生成时间：{esc(summary.get('generated_at'))}</div>
+<h1>{esc(title)}</h1>
+<div class="scope">{scope_text}</div>
 <div class="cards">{cards_html}</div>
-<h2>按馈线统计</h2><table><thead><tr><th>馈线</th><th>{"总设备" if coverage_available else "历史设备"}</th><th>已调试</th><th>调试中</th><th>未调试</th><th>Pass</th><th>Pass with comments</th><th>Fail</th><th>完成率</th><th>通过率</th></tr></thead><tbody>{feeder_rows}</tbody></table>
-<h2>设备明细</h2><table><thead><tr><th>区域</th><th>变电站</th><th>馈线</th><th>设备</th><th>类型</th><th>状态</th><th>总评</th><th>调试时间</th><th>负责人</th></tr></thead><tbody>{device_rows}</tbody></table>
+<h2>{tx('按馈线统计', 'Statistics by Feeder')}</h2><table><thead><tr><th>{tx('馈线', 'Feeder')}</th><th>{feeder_total}</th><th>{tx('已调试', 'Tested')}</th><th>{tx('调试中', 'In Progress')}</th><th>{tx('未调试', 'Untested')}</th><th>{tx('通过', 'Pass')}</th><th>{tx('通过（带备注）', 'Pass with comments')}</th><th>{tx('失败', 'Fail')}</th><th>{tx('完成率', 'Completion Rate')}</th><th>{tx('通过率', 'Pass Rate')}</th></tr></thead><tbody>{feeder_rows}</tbody></table>
+<h2>{tx('设备明细', 'Device Details')}</h2><table><thead><tr><th>{tx('区域', 'Area')}</th><th>{tx('变电站', 'Substation')}</th><th>{tx('馈线', 'Feeder')}</th><th>{tx('设备', 'Device')}</th><th>{tx('类型', 'Type')}</th><th>{tx('状态', 'Status')}</th><th>{tx('总评', 'Overall Result')}</th><th>{tx('调试时间', 'Test Time')}</th><th>{tx('负责人', 'Lead')}</th></tr></thead><tbody>{device_rows}</tbody></table>
 </body></html>'''
 
-    def export_dashboard_summary(self, filters: Mapping[str, str]) -> dict[str, Any]:
+    def export_dashboard_summary(self, filters: Mapping[str, str], lang: str = "zh") -> dict[str, Any]:
         summary = self.dashboard_summary(filters)
-        html_text = self._summary_report_html(summary)
+        html_text = self._summary_report_html(summary, lang=lang)
         result = self.report_store.save_summary_report(
             summary,
             html_text,
@@ -824,7 +971,7 @@ class LiveDataProvider:
             mappings = self.mappings(rmu_names)
             if network == "distribution" and not mappings:
                 # A nonexistent RMU is a normal business result, not a server failure.
-                # Render the report with an empty mapping so the UI shows "未查询到匹配的环网柜".
+                # Render the report with an empty mapping so the UI shows "未查询到匹配的设备".
                 rows = []
             else:
                 if network == "distribution":
@@ -885,17 +1032,33 @@ def _live_script(
   let searchTimer = null;
   let selectedSelector = '';
 
+  function currentLanguage() {{
+    if (window.DistributionLanguageController && typeof window.DistributionLanguageController.get === 'function') {{
+      return window.DistributionLanguageController.get();
+    }}
+    if (typeof window.getReportLanguage === 'function') return window.getReportLanguage();
+    return document.getElementById('lang-en')?.classList.contains('active') ? 'en' : 'zh';
+  }}
+  function isEnglish() {{ return currentLanguage() === 'en'; }}
+  function liveText(zh, en) {{ return isEnglish() ? en : zh; }}
+
   function selectionToken(item) {{
+    // The row the operator clicked is authoritative. Carry the full displayed
+    // FID back to the server and query that exact device. The final segment is
+    // still the RMU number/name (for example 6 or 22004), but it is never used
+    // alone to expand into another feeder's device.
+    const fid = String(item?.adms_gss_fid || '').trim();
+    if (fid) return 'fid:' + fid;
     const combinedId = item?.combined_id;
     if (combinedId !== undefined && combinedId !== null && String(combinedId).trim()) {{
       return 'id:' + String(combinedId).trim();
     }}
-    const fid = String(item?.adms_gss_fid || '').trim();
-    if (fid) return 'fid:' + fid;
     return String(item?.rmu_name || '').trim();
   }}
 
   function navigateSelectedRmus() {{
+    // Language is global and persisted independently from device navigation.
+    // Do not read, write, or hand off language here.
     const params = new URLSearchParams();
     params.set('network', 'distribution');
     if (selectedRmus.length) params.set('rmu', selectedRmus.join(','));
@@ -920,11 +1083,16 @@ def _live_script(
     navigateSelectedRmus();
   }}
 
-  function removeRmu(name) {{
+  function removeRmu(name, idAlias) {{
     const clean = String(name || '').trim();
-    const index = selectedRmus.indexOf(clean);
+    const oldId = String(idAlias || '').trim();
+    let index = selectedRmus.indexOf(clean);
+    if (index < 0 && oldId) index = selectedRmus.indexOf(oldId);
     if (index >= 0) selectedRmus.splice(index, 1);
-    if (typeof window.setDeviceVerdict === 'function') window.setDeviceVerdict(clean, '');
+    if (typeof window.setDeviceVerdict === 'function') {{
+      window.setDeviceVerdict(clean, '');
+      if (oldId) window.setDeviceVerdict(oldId, '');
+    }}
     navigateSelectedRmus();
   }}
 
@@ -934,8 +1102,7 @@ def _live_script(
     if (!items.length) {{
       const empty = document.createElement('div');
       empty.className = 'rmu-suggestion';
-      empty.textContent = document.getElementById('lang-en')?.classList.contains('active')
-        ? 'No matching RMU found' : '未查询到匹配的环网柜';
+      empty.textContent = liveText('未查询到匹配的设备', 'No matching device found');
       suggestions.appendChild(empty);
       suggestions.hidden = false;
       return;
@@ -979,8 +1146,8 @@ def _live_script(
         suggestions.innerHTML = '';
         const failed = document.createElement('div');
         failed.className = 'rmu-suggestion rmu-suggestion-error';
-        failed.textContent = (document.getElementById('lang-en')?.classList.contains('active')
-          ? 'RMU search failed: ' : '环网柜搜索失败：') + (error?.message || 'unknown error');
+        console.error('device search failed', error);
+        failed.textContent = liveText('设备搜索失败，请查看服务端日志。', 'Device search failed. Please check the server log.');
         suggestions.appendChild(failed);
         suggestions.hidden = false;
       }}
@@ -1032,9 +1199,9 @@ def _live_script(
     return {{}};
   }}
   function verdictText(value) {{
-    const english = document.getElementById('lang-en')?.classList.contains('active');
+    const english = isEnglish();
     if (value === 'pass') return english ? 'Pass' : '通过';
-    if (value === 'conditional') return 'Pass with comments';
+    if (value === 'conditional') return english ? 'Pass with comments' : '通过（带备注）';
     if (value === 'fail') return english ? 'Fail' : '不通过';
     return '—';
   }}
@@ -1042,9 +1209,16 @@ def _live_script(
     const saved = deviceVerdicts();
     document.querySelectorAll('.device-verdict[data-rmu]').forEach((sel) => {{
       const key = sel.dataset.rmu || '';
+      const idKey = sel.dataset.rmuId || '';
       const legacyKey = sel.dataset.rmuLegacy || '';
       if (saved[key] !== undefined) sel.value = saved[key];
-      else if (legacyKey && saved[legacyKey] !== undefined) {{
+      else if (idKey && saved[idKey] !== undefined) {{
+        sel.value = saved[idKey];
+        if (typeof window.setDeviceVerdict === 'function') {{
+          window.setDeviceVerdict(key, saved[idKey]);
+          window.setDeviceVerdict(idKey, '');
+        }}
+      }} else if (legacyKey && saved[legacyKey] !== undefined) {{
         sel.value = saved[legacyKey];
         if (typeof window.setDeviceVerdict === 'function') {{
           window.setDeviceVerdict(key, saved[legacyKey]);
@@ -1068,8 +1242,9 @@ def _live_script(
     const saved = deviceVerdicts();
     document.querySelectorAll('.print-device-verdict[data-rmu]').forEach((cell) => {{
       const key = cell.dataset.rmu || '';
+      const idKey = cell.dataset.rmuId || '';
       const legacyKey = cell.dataset.rmuLegacy || '';
-      cell.textContent = verdictText(saved[key] || saved[legacyKey] || '');
+      cell.textContent = verdictText(saved[key] || saved[idKey] || saved[legacyKey] || '');
     }});
   }}
   // Expose explicit synchronizers so the base report can refresh the
@@ -1079,16 +1254,22 @@ def _live_script(
   syncDeviceVerdicts();
 
   document.querySelectorAll('.rmu-remove-button[data-rmu]').forEach((button) => {{
-    button.addEventListener('click', () => removeRmu(button.dataset.rmu || ''));
+    button.addEventListener('click', () => removeRmu(button.dataset.rmu || '', button.dataset.rmuId || ''));
   }});
 
   function applyLiveLanguage() {{
-    const english = document.getElementById('lang-en')?.classList.contains('active');
+    const english = isEnglish();
     document.querySelectorAll('[data-live-zh]').forEach((node) => {{ node.style.display = english ? 'none' : ''; }});
     document.querySelectorAll('[data-live-en]').forEach((node) => {{ node.style.display = english ? '' : 'none'; }});
     const rmuInput = document.getElementById('distribution-rmu-input');
-    if (rmuInput) rmuInput.placeholder = english ? 'e.g. type 346 and select an RMU' : '例如：输入 346 后选择环网柜';
+    if (rmuInput) rmuInput.placeholder = english ? 'e.g. enter a device name or number and select a device' : '例如：输入设备名称或编号后选择设备';
+    document.querySelectorAll('.device-verdict option[data-label-zh][data-label-en]').forEach((option) => {{
+      option.textContent = english ? option.dataset.labelEn : option.dataset.labelZh;
+    }});
+    if (searchButton) searchButton.setAttribute('aria-label', english ? 'Search Database' : '搜索数据库');
   }}
+  window.applyLiveLanguage = applyLiveLanguage;
+  window.addEventListener('report-language-change', applyLiveLanguage);
 
   function applyIec104Layout() {{
     const normalizedProtocol = String(liveProtocol).toUpperCase().replace(/[\\s-]/g, '');
@@ -1143,7 +1324,8 @@ def _live_script(
       if (!state.meta.channel || typeof state.meta.channel !== 'object') state.meta.channel = {{}};
       state.meta.channel.protocol = liveProtocol;
     }}
-    if (typeof setLang === 'function' && typeof lang !== 'undefined') setLang(lang);
+    // Do not call setLang here: only the explicit 中文 / EN buttons may
+    // change the global language preference.
   }}
   applyLiveProtocol();
   applyIec104Layout();
@@ -1160,6 +1342,26 @@ def _live_script(
 </script>
 <!-- distribution-live-script-end -->
 """
+
+
+def _archive_view_html(html_text: str) -> str:
+    """Give frozen archives working navigation without reviving editor scripts."""
+    links = {"btn-home": "/", "btn-history": "/history", "btn-dashboard": "/dashboard"}
+    def navigation(match: re.Match[str]) -> str:
+        attrs, button_id, tail, label = match.groups()
+        return f'<a{attrs}id="{button_id}"{tail} href="{links[button_id]}">{label}</a>'
+    html_text = re.sub(
+        r'<button\b([^>]*?)id="(btn-home|btn-history|btn-dashboard)"([^>]*)>(.*?)</button>',
+        navigation, html_text, flags=re.DOTALL | re.IGNORECASE,
+    )
+    style = """<style id="archive-view-controls">
+    #btn-reset-current,#btn-save,#data-menu,.lang-toggle,#btn-print-draft,#btn-print,
+    .toolbar,.tabs,#distribution-rmu-map button,#distribution-rmu-input,#rmu-suggestions {display:none!important}
+    input,select,textarea {pointer-events:none}
+    header a.ghost {display:inline-block;text-decoration:none;color:inherit}
+    </style>"""
+    # Archives stay frozen; printing/downloading remains available from History.
+    return html_text.replace("</head>", style + "</head>", 1)
 
 
 class ReportHandler(BaseHTTPRequestHandler):
@@ -1203,6 +1405,9 @@ class ReportHandler(BaseHTTPRequestHandler):
         if path is None:
             self._send(404, "text/plain; charset=utf-8", b"Report file not found")
             return
+        if kind == "pdf" and not path.with_suffix(".watermark-free").exists():
+            # Old PDFs may contain a draft watermark. Regenerate before serving.
+            self.provider.generate_report_pdf(report_uuid)
         content_types = {
             "pdf": "application/pdf",
             "html": "text/html; charset=utf-8",
@@ -1211,10 +1416,14 @@ class ReportHandler(BaseHTTPRequestHandler):
         suffix = {"pdf": ".pdf", "html": ".html", "json": ".json"}[kind]
         disposition = "inline" if inline else "attachment"
         filename = f"ETE-{report_uuid}{suffix}"
+        body = path.read_bytes()
+        if kind == "html":
+            html_text = _formal_print_html(body.decode("utf-8"))
+            body = (_archive_view_html(html_text) if inline else html_text).encode("utf-8")
         self._send(
             200,
             content_types[kind],
-            path.read_bytes(),
+            body,
             {"Content-Disposition": f'{disposition}; filename="{filename}"'},
         )
 
@@ -1364,6 +1573,13 @@ class ReportHandler(BaseHTTPRequestHandler):
                 result = self.provider.archive_report(data, self.client_address[0] if self.client_address else "")
                 self._json(201, {"ok": True, **result})
                 return
+            if parsed.path == "/api/reports/import-json":
+                data = self._read_json_body(max_bytes=16 * 1024 * 1024)
+                result = self.provider.import_json_report(
+                    data, self.client_address[0] if self.client_address else ""
+                )
+                self._json(201, {"ok": True, **result})
+                return
             generate_pdf_match = re.fullmatch(r"/api/reports/([0-9a-fA-F-]+)/generate-pdf", parsed.path)
             if generate_pdf_match:
                 result = self.provider.generate_report_pdf(generate_pdf_match.group(1))
@@ -1372,7 +1588,8 @@ class ReportHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/dashboard/export":
                 data = self._read_json_body()
                 filters = data.get("filters") if isinstance(data.get("filters"), Mapping) else data
-                result = self.provider.export_dashboard_summary(filters)
+                lang = str(data.get("lang") or "zh") if isinstance(data, Mapping) else "zh"
+                result = self.provider.export_dashboard_summary(filters, lang=lang)
                 self._json(201, {"ok": True, **result})
                 return
             self._send(404, "text/plain; charset=utf-8", b"Not found")

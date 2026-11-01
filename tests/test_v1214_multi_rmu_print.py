@@ -16,7 +16,8 @@ def test_multi_rmu_selector_appends_without_changing_search_api():
 def test_selected_rmu_table_has_sequence_and_per_device_verdict():
     html = _render_mapping_section([sample('22004','JED-CTL-EEH-AH333-22004'), sample('22005','JED-CTL-EEH-AH333-22005')], ['22004','22005'])
     assert '序号' in html and '总评' in html
-    assert 'data-rmu="id:22004"' in html and 'data-rmu="id:22005"' in html
+    assert 'data-rmu="fid:JED-CTL-EEH-AH333-22004"' in html and 'data-rmu="fid:JED-CTL-EEH-AH333-22005"' in html
+    assert 'data-rmu-id="id:22004"' in html and 'data-rmu-id="id:22005"' in html
     assert '>1</td>' in html and '>2</td>' in html
 
 

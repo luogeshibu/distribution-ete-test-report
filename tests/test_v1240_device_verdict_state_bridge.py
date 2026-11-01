@@ -21,4 +21,4 @@ def test_live_script_uses_bridge_not_private_state_variable():
 def test_print_sync_reads_the_same_bridged_verdict_object():
     js = _live_script('distribution', ['JED-CTL-EEH-AH333-22004'], 60, 'IEC-104', '1.2.40')
     assert 'const saved = deviceVerdicts();' in js
-    assert "cell.textContent = verdictText(saved[key] || saved[legacyKey] || '')" in js
+    assert "cell.textContent = verdictText(saved[key] || saved[idKey] || saved[legacyKey] || '')" in js

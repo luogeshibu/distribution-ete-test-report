@@ -8,7 +8,7 @@
 :root{--green:#0b6b52;--green2:#128466;--bg:#eef2f4;--card:#fff;--border:#d7e0dd;--text:#172520;--muted:#687872;--pass:#067552;--fail:#bd240f;--warn:#9a6500;--blue:#1769aa}
 *{box-sizing:border-box}body{margin:0;font-family:Arial,"Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text)}
 header{background:linear-gradient(90deg,#075a45,#0e8566);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:20px;position:sticky;top:0;z-index:5;box-shadow:0 1px 4px #0002}
-header h1{font-size:20px;margin:0}header p{margin:4px 0 0;font-size:12px;opacity:.86}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a,.nav button{border:1px solid #ffffff55;background:#ffffff16;color:#fff;border-radius:6px;padding:8px 12px;text-decoration:none;font-size:13px;cursor:pointer}.nav .primary{background:#fff;color:var(--green);font-weight:700}
+header h1{font-size:20px;margin:0}header p{margin:4px 0 0;font-size:12px;opacity:.86}.nav{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.nav a,.nav button{border:1px solid #ffffff55;background:#ffffff16;color:#fff;border-radius:6px;padding:8px 12px;text-decoration:none;font-size:13px;cursor:pointer}.nav .primary{background:#fff;color:var(--green);font-weight:700}.lang-toggle{display:inline-flex;border:1px solid #ffffff55;border-radius:6px;overflow:hidden}.lang-toggle button{border:0;border-radius:0;background:transparent;padding:8px 10px;opacity:.78}.lang-toggle button.active{background:#ffffff24;font-weight:700;opacity:1}
 main{max-width:1500px;margin:18px auto;padding:0 18px 40px}.panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;box-shadow:0 1px 3px #0000000d}.panel h2{margin:0 0 14px;font-size:17px;border-left:4px solid var(--green);padding-left:9px}.filters{display:grid;grid-template-columns:1.1fr 1fr 1fr .9fr .9fr auto;gap:10px;align-items:end}.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}.field input{width:100%;height:36px;border:1px solid #cbd6d2;border-radius:6px;padding:0 10px;font-size:13px}.actions{display:flex;gap:8px}.btn{height:36px;border:0;border-radius:6px;padding:0 14px;cursor:pointer;font-weight:650}.btn-primary{background:var(--green);color:#fff}.btn-secondary{background:#e6efec;color:#174d3f}.btn:disabled{opacity:.55;cursor:not-allowed}
 .hint{margin-top:10px;color:var(--muted);font-size:12px}.warning{margin-top:10px;background:#fff3d6;border:1px solid #f0cf87;color:#765000;padding:9px 11px;border-radius:6px;display:none}.warning.show{display:block}
 .cards{display:grid;grid-template-columns:repeat(9,minmax(105px,1fr));gap:10px}.metric{background:#eef8f4;border:1px solid #d2e8e0;border-radius:8px;padding:13px 12px;min-height:82px}.metric span{display:block;color:#60716b;font-size:12px;margin-bottom:7px}.metric strong{font-size:24px}.metric.pass strong{color:var(--pass)}.metric.fail strong{color:var(--fail)}.metric.warn strong{color:var(--warn)}
@@ -19,90 +19,102 @@ main{max-width:1500px;margin:18px auto;padding:0 18px 40px}.panel{background:var
 </head>
 <body>
 <header>
-  <div><h1>配网 ETE 测试总览 · ADMS</h1><p>厂站 / 馈线智能设备覆盖、调试进度、通过率与总体报告</p></div>
-  <div class="nav"><a href="/">ETE 测试</a><a href="/history">历史报表</a><a class="primary" href="/dashboard">测试总览</a></div>
+  <div><h1 data-i18n="hdrTitle">配网 ETE 测试总览 · ADMS</h1><p data-i18n="hdrSub">厂站 / 馈线智能设备覆盖、调试进度、通过率与总体报告</p></div>
+  <div class="nav">
+    <a href="/" data-i18n="navTest">ETE 测试</a><a href="/history" data-i18n="navHistory">历史报表</a><a class="primary" href="/dashboard" data-i18n="navDashboard">测试总览</a>
+    <div class="lang-toggle" aria-label="Language"><button type="button" id="lang-zh" class="active">中文</button><button type="button" id="lang-en">EN</button></div>
+  </div>
 </header>
 <main>
   <section class="panel">
-    <h2>查询范围</h2>
+    <h2 data-i18n="queryScope">查询范围</h2>
     <form id="filter-form" class="filters">
-      <div class="field"><label>区域</label><input id="subcontrolarea" placeholder="例如 JED-NTH"></div>
-      <div class="field"><label>变电站</label><input id="substation" placeholder="例如 ABS"></div>
-      <div class="field"><label>馈线</label><input id="feeder" placeholder="例如 AH321"></div>
-      <div class="field"><label>开始日期</label><input id="date_from" type="date"></div>
-      <div class="field"><label>结束日期</label><input id="date_to" type="date"></div>
-      <div class="actions"><button class="btn btn-primary" id="query" type="submit">查询</button></div>
+      <div class="field"><label data-i18n="area">区域</label><input id="subcontrolarea" data-i18n-placeholder="phArea" placeholder="例如 JED-NTH"></div>
+      <div class="field"><label data-i18n="substation">变电站</label><input id="substation" data-i18n-placeholder="phSubstation" placeholder="例如 ABS"></div>
+      <div class="field"><label data-i18n="feeder">馈线</label><input id="feeder" data-i18n-placeholder="phFeeder" placeholder="例如 AH321"></div>
+      <div class="field"><label data-i18n="dateFrom">开始日期</label><input id="date_from" type="date"></div>
+      <div class="field"><label data-i18n="dateTo">结束日期</label><input id="date_to" type="date"></div>
+      <div class="actions"><button class="btn btn-primary" id="query" type="submit" data-i18n="query">查询</button></div>
     </form>
-    <div class="hint">页面打开时先展示服务端本地历史 ETE 报告，不查询 Oracle；输入区域 / 变电站 / 馈线后，才会只读查询智能设备台账并计算未调试设备与完成率。Oracle 不可用时会回退到最近缓存。</div>
+    <div class="hint" data-i18n="hint">页面打开时先展示服务端本地历史 ETE 报告，不查询 Oracle；输入区域 / 变电站 / 馈线后，才会只读查询智能设备台账并计算未调试设备与完成率。Oracle 不可用时会回退到最近缓存。</div>
     <div id="warning" class="warning"></div>
   </section>
 
   <section class="panel">
-    <div class="section-head"><h2>总体进度</h2><div class="export-box"><button class="btn btn-secondary" id="export" disabled>导出总体报表</button><span class="export-result" id="export-result"></span></div></div>
+    <div class="section-head"><h2 data-i18n="overallProgress">总体进度</h2><div class="export-box"><button class="btn btn-secondary" id="export" disabled data-i18n="exportSummary">导出总体报表</button><span class="export-result" id="export-result"></span></div></div>
     <div class="cards">
       <div class="metric"><span id="m-total-label">历史测试设备</span><strong id="m-total">—</strong></div>
-      <div class="metric pass"><span>已调试</span><strong id="m-tested">—</strong></div>
-      <div class="metric warn"><span>调试中</span><strong id="m-progress">—</strong></div>
-      <div class="metric"><span>未调试</span><strong id="m-untested">—</strong></div>
-      <div class="metric pass"><span>通过</span><strong id="m-pass">—</strong></div>
-      <div class="metric warn"><span>Pass with comments</span><strong id="m-conditional">—</strong></div>
-      <div class="metric fail"><span>失败</span><strong id="m-fail">—</strong></div>
-      <div class="metric"><span>完成率</span><strong id="m-completion">—</strong></div>
-      <div class="metric"><span>通过率</span><strong id="m-pass-rate">—</strong></div>
+      <div class="metric pass"><span data-i18n="tested">已调试</span><strong id="m-tested">—</strong></div>
+      <div class="metric warn"><span data-i18n="inProgress">调试中</span><strong id="m-progress">—</strong></div>
+      <div class="metric"><span data-i18n="untested">未调试</span><strong id="m-untested">—</strong></div>
+      <div class="metric pass"><span data-i18n="pass">通过</span><strong id="m-pass">—</strong></div>
+      <div class="metric warn"><span data-i18n="conditional">通过（带备注）</span><strong id="m-conditional">—</strong></div>
+      <div class="metric fail"><span data-i18n="fail">失败</span><strong id="m-fail">—</strong></div>
+      <div class="metric"><span data-i18n="completionRate">完成率</span><strong id="m-completion">—</strong></div>
+      <div class="metric"><span data-i18n="passRate">通过率</span><strong id="m-pass-rate">—</strong></div>
     </div>
     <div class="meta-line"><span id="mode">当前视图：—</span><span id="source">数据来源：—</span><span id="refresh">台账刷新时间：—</span><span id="generated">统计生成时间：—</span></div>
   </section>
 
   <section class="panel">
-    <h2>按馈线统计</h2>
-    <div class="table-wrap"><table><thead><tr><th class="left">馈线</th><th id="feeder-total-head">历史设备</th><th>已调试</th><th>调试中</th><th>未调试</th><th>Pass</th><th>Pass with comments</th><th>Fail</th><th>完成率</th><th>通过率</th></tr></thead><tbody id="feeder-rows"><tr><td colspan="10" class="empty">正在加载历史测试数据…</td></tr></tbody></table></div>
+    <h2 data-i18n="byFeeder">按馈线统计</h2>
+    <div class="table-wrap"><table><thead><tr><th class="left" data-i18n="feeder">馈线</th><th id="feeder-total-head">历史设备</th><th data-i18n="tested">已调试</th><th data-i18n="inProgress">调试中</th><th data-i18n="untested">未调试</th><th data-i18n="pass">通过</th><th data-i18n="conditional">通过（带备注）</th><th data-i18n="fail">失败</th><th data-i18n="completionRate">完成率</th><th data-i18n="passRate">通过率</th></tr></thead><tbody id="feeder-rows"><tr><td colspan="10" class="empty">正在加载历史测试数据…</td></tr></tbody></table></div>
   </section>
 
   <section class="panel">
-    <h2>设备明细</h2>
-    <div class="table-wrap"><table><thead><tr><th class="left">设备</th><th>区域</th><th>变电站</th><th>馈线</th><th>类型</th><th>状态</th><th>总评</th><th>调试时间</th><th>负责人</th><th>报告</th></tr></thead><tbody id="device-rows"><tr><td colspan="10" class="empty">正在加载历史测试数据…</td></tr></tbody></table></div>
+    <h2 data-i18n="deviceDetails">设备明细</h2>
+    <div class="table-wrap"><table><thead><tr><th class="left" data-i18n="device">设备</th><th data-i18n="area">区域</th><th data-i18n="substation">变电站</th><th data-i18n="feeder">馈线</th><th data-i18n="type">类型</th><th data-i18n="status">状态</th><th data-i18n="overallResult">总评</th><th data-i18n="testTime">调试时间</th><th data-i18n="lead">负责人</th><th data-i18n="report">报告</th></tr></thead><tbody id="device-rows"><tr><td colspan="10" class="empty">正在加载历史测试数据…</td></tr></tbody></table></div>
   </section>
 </main>
 <script>
 const $=id=>document.getElementById(id);let lastFilters=null;let lastData=null;
+const LANG_KEY='distribution_rmu_e2e_report_search_lang';
+const WINDOW_LANG_MARKER='__distribution_ete_lang__=';
+const LANG_COOKIE='distribution_ete_language';
+function validLanguage(value){return value==='zh'||value==='en'}
+function readWindowLanguage(){try{for(const part of String(window.name||'').split('|')){if(part.startsWith(WINDOW_LANG_MARKER)){const value=part.slice(WINDOW_LANG_MARKER.length);if(validLanguage(value))return value}}}catch(e){}return ''}
+function writeWindowLanguage(value){if(!validLanguage(value))return;try{const parts=String(window.name||'').split('|').filter(part=>part&&!part.startsWith(WINDOW_LANG_MARKER));parts.push(WINDOW_LANG_MARKER+value);window.name=parts.join('|')}catch(e){}}
+function readCookieLanguage(){try{const prefix=LANG_COOKIE+'=';for(const raw of String(document.cookie||'').split(';')){const item=raw.trim();if(!item.startsWith(prefix))continue;const value=decodeURIComponent(item.slice(prefix.length));if(validLanguage(value))return value}}catch(e){}return ''}
+function writeCookieLanguage(value){if(!validLanguage(value))return;try{document.cookie=LANG_COOKIE+'='+encodeURIComponent(value)+'; Path=/; Max-Age=31536000; SameSite=Lax'}catch(e){}}
+function readLocalLanguage(key){try{const value=localStorage.getItem(key);return validLanguage(value)?value:''}catch(e){return ''}}
+function createLanguageController(key){let current=readWindowLanguage()||readCookieLanguage()||readLocalLanguage(key)||'zh';function mirror(value){if(!validLanguage(value))return;writeWindowLanguage(value);writeCookieLanguage(value);try{localStorage.setItem(key,value)}catch(e){}}mirror(current);return{get(){return current},select(next){if(!validLanguage(next))return current;current=next;mirror(current);return current},sync(next){if(!validLanguage(next))return current;current=next;mirror(current);return current}}}
+const LANGUAGE_CONTROLLER=window.DistributionLanguageController||createLanguageController(LANG_KEY);
+window.DistributionLanguageController=LANGUAGE_CONTROLLER;
+try{sessionStorage.removeItem(LANG_KEY+'_nav')}catch(e){}
+const I18N={
+  zh:{title:'配网 ETE 测试总览 · ADMS',hdrTitle:'配网 ETE 测试总览 · ADMS',hdrSub:'厂站 / 馈线智能设备覆盖、调试进度、通过率与总体报告',navTest:'ETE 测试',navHistory:'历史报表',navDashboard:'测试总览',queryScope:'查询范围',area:'区域',substation:'变电站',feeder:'馈线',dateFrom:'开始日期',dateTo:'结束日期',phArea:'例如 JED-NTH',phSubstation:'例如 ABS',phFeeder:'例如 AH321',query:'查询',hint:'页面打开时先展示服务端本地历史 ETE 报告，不查询 Oracle；输入区域 / 变电站 / 馈线后，才会只读查询智能设备台账并计算未调试设备与完成率。Oracle 不可用时会回退到最近缓存。',overallProgress:'总体进度',exportSummary:'导出总体报表',historyDevices:'历史测试设备',smartTotal:'智能设备总数',tested:'已调试',inProgress:'调试中',untested:'未调试',pass:'通过',conditional:'通过（带备注）',fail:'失败',completionRate:'完成率',passRate:'通过率',currentCoverage:'当前视图：设备覆盖分析',currentHistory:'当前视图：历史测试总览（未查询 Oracle）',dataSource:'数据来源：',refreshTime:'台账刷新时间：',refreshNotNeeded:'无需查询',generatedTime:'统计生成时间：',byFeeder:'按馈线统计',historyDevice:'历史设备',totalDevice:'总设备',deviceDetails:'设备明细',device:'设备',type:'类型',status:'状态',overallResult:'总评',testTime:'调试时间',lead:'负责人',report:'报告',view:'查看',noSmart:'没有匹配的智能设备',noHistory:'暂无历史测试记录',loadingHistory:'正在加载历史测试数据…',queryFail:'测试总览查询失败：',sourceHistory:'本地历史报告',sourceOracle:'Oracle 智能设备台账（只读）',sourceMapping:'本地 Mapping JSON',sourceCache:'最近设备台账缓存',exporting:'正在生成总体报表…',archived:'已归档',download:'下载',exportFail:'导出失败：',cacheWarning:'Oracle 设备台账查询失败，已使用最近缓存。'},
+  en:{title:'Distribution ETE Test Overview · ADMS',hdrTitle:'Distribution ETE Test Overview · ADMS',hdrSub:'SMART-device coverage, commissioning progress, pass rate and consolidated reporting by station / feeder',navTest:'ETE Test',navHistory:'Test History',navDashboard:'Test Overview',queryScope:'Query Scope',area:'Area',substation:'Substation',feeder:'Feeder',dateFrom:'Start Date',dateTo:'End Date',phArea:'e.g. JED-NTH',phSubstation:'e.g. ABS',phFeeder:'e.g. AH321',query:'Search',hint:'On opening, this page shows local server-side ETE history without querying Oracle. After an area, substation, or feeder is entered, it performs a read-only SMART-device inventory query to calculate untested devices and completion rate. If Oracle is unavailable, the latest inventory cache is used.',overallProgress:'Overall Progress',exportSummary:'Export Summary Report',historyDevices:'Historical Test Devices',smartTotal:'Total SMART Devices',tested:'Tested',inProgress:'In Progress',untested:'Untested',pass:'Pass',conditional:'Pass with comments',fail:'Fail',completionRate:'Completion Rate',passRate:'Pass Rate',currentCoverage:'Current view: Device Coverage Analysis',currentHistory:'Current view: Historical Test Overview (Oracle not queried)',dataSource:'Data source: ',refreshTime:'Inventory refresh time: ',refreshNotNeeded:'Not required',generatedTime:'Statistics generated: ',byFeeder:'Statistics by Feeder',historyDevice:'Historical Devices',totalDevice:'Total Devices',deviceDetails:'Device Details',device:'Device',type:'Type',status:'Status',overallResult:'Overall Result',testTime:'Test Time',lead:'Lead',report:'Report',view:'View',noSmart:'No matching SMART devices',noHistory:'No historical test records',loadingHistory:'Loading historical test data…',queryFail:'Failed to load test overview: ',sourceHistory:'Local historical reports',sourceOracle:'Oracle SMART device inventory (read-only)',sourceMapping:'Local Mapping JSON',sourceCache:'Latest device inventory cache',exporting:'Generating summary report…',archived:'Archived',download:'Download',exportFail:'Export failed: ',cacheWarning:'Oracle device-inventory query failed; the latest cache is being used.'}
+};
+let lang=LANGUAGE_CONTROLLER.get();
+function t(k){return I18N[lang][k]??k}
 function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function filters(){return {subcontrolarea:$('subcontrolarea').value.trim(),substation:$('substation').value.trim(),feeder:$('feeder').value.trim(),date_from:$('date_from').value,date_to:$('date_to').value}}
 function qs(obj){const p=new URLSearchParams();Object.entries(obj).forEach(([k,v])=>{if(v)p.set(k,v)});return p}
-function badgeStatus(s){const map={tested:['已调试','badge-tested'],in_progress:['调试中','badge-progress'],untested:['未调试','badge-untested']};const x=map[s]||[s||'—','badge-untested'];return `<span class="badge ${x[1]}">${esc(x[0])}</span>`}
-function badgeVerdict(v){const map={pass:['Pass','badge-pass'],conditional:['Pass with comments','badge-conditional'],fail:['Fail','badge-fail']};const x=map[v]||['—','badge-untested'];return `<span class="badge ${x[1]}">${esc(x[0])}</span>`}
+function badgeStatus(s){const map={tested:[t('tested'),'badge-tested'],in_progress:[t('inProgress'),'badge-progress'],untested:[t('untested'),'badge-untested']};const x=map[s]||[s||'—','badge-untested'];return `<span class="badge ${x[1]}">${esc(x[0])}</span>`}
+function badgeVerdict(v){const map={pass:[t('pass'),'badge-pass'],conditional:[t('conditional'),'badge-conditional'],fail:[t('fail'),'badge-fail']};const x=map[v]||['—','badge-untested'];return `<span class="badge ${x[1]}">${esc(x[0])}</span>`}
 function valueOrDash(v){return v===null||v===undefined||v===''?'—':String(v)}
 function pct(v){return v===null||v===undefined||v===''?'—':Number(v).toFixed(1)+'%'}
-function sourceLabel(source){const map={history:'本地历史报告',oracle:'Oracle 智能设备台账（只读）','mapping-json':'本地 Mapping JSON',cache:'最近设备台账缓存'};return map[source]||source||'—'}
+function sourceLabel(source){const map={history:t('sourceHistory'),oracle:t('sourceOracle'),'mapping-json':t('sourceMapping'),cache:t('sourceCache')};return map[source]||source||'—'}
+function warningText(value){const raw=String(value||'');return raw?t('cacheWarning'):''}
+function applyI18n(){document.documentElement.lang=lang==='zh'?'zh-CN':'en';document.title=t('title');document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));document.querySelectorAll('[data-i18n-placeholder]').forEach(el=>el.placeholder=t(el.dataset.i18nPlaceholder));$('lang-zh').classList.toggle('active',lang==='zh');$('lang-en').classList.toggle('active',lang==='en')}
+function renderLanguage(){applyI18n();if(lastData)render(lastData);else{$('feeder-rows').innerHTML=`<tr><td colspan="10" class="empty">${esc(t('loadingHistory'))}</td></tr>`;$('device-rows').innerHTML=`<tr><td colspan="10" class="empty">${esc(t('loadingHistory'))}</td></tr>`}}
+function setLang(next){if(next!=='zh'&&next!=='en')return;lang=LANGUAGE_CONTROLLER.select(next);renderLanguage()}
+function syncLang(next){if(next!=='zh'&&next!=='en')return;lang=LANGUAGE_CONTROLLER.sync(next);renderLanguage()}
+window.addEventListener('storage',(event)=>{if(event.key!==LANG_KEY)return;const next=event.newValue;if((next==='zh'||next==='en')&&next!==lang)syncLang(next)});
 function render(d){
-  lastData=d;const t=d.totals||{};const coverage=d.coverage_available===true;
-  $('m-total-label').textContent=coverage?'智能设备总数':'历史测试设备';
-  $('feeder-total-head').textContent=coverage?'总设备':'历史设备';
-  $('m-total').textContent=valueOrDash(t.total);
-  $('m-tested').textContent=valueOrDash(t.tested);
-  $('m-progress').textContent=valueOrDash(t.in_progress);
-  $('m-untested').textContent=valueOrDash(t.untested);
-  $('m-pass').textContent=valueOrDash(t.passed);
-  $('m-conditional').textContent=valueOrDash(t.conditional);
-  $('m-fail').textContent=valueOrDash(t.failed);
-  $('m-completion').textContent=pct(t.completion_rate);
-  $('m-pass-rate').textContent=pct(t.pass_rate);
-  $('mode').textContent=coverage?'当前视图：设备覆盖分析':'当前视图：历史测试总览（未查询 Oracle）';
-  $('source').textContent='数据来源：'+sourceLabel(d.inventory_source);
-  $('refresh').textContent=coverage?'台账刷新时间：'+(d.inventory_refreshed_at||'—'):'台账刷新时间：无需查询';
-  $('generated').textContent='统计生成时间：'+(d.generated_at||'—');
-  $('warning').textContent=d.warning||'';$('warning').classList.toggle('show',!!d.warning);
-  const fs=Array.isArray(d.feeders)?d.feeders:[];
-  $('feeder-rows').innerHTML=fs.length?fs.map(x=>`<tr><td class="left">${esc(x.feeder)}</td><td>${valueOrDash(x.total)}</td><td>${valueOrDash(x.tested)}</td><td>${valueOrDash(x.in_progress)}</td><td>${valueOrDash(x.untested)}</td><td>${valueOrDash(x.passed)}</td><td>${valueOrDash(x.conditional)}</td><td>${valueOrDash(x.failed)}</td><td>${pct(x.completion_rate)}</td><td>${pct(x.pass_rate)}</td></tr>`).join(''):`<tr><td colspan="10" class="empty">${coverage?'没有匹配的智能设备':'暂无历史测试记录'}</td></tr>`;
-  const ds=Array.isArray(d.devices)?d.devices:[];
-  $('device-rows').innerHTML=ds.length?ds.map(x=>{const report=x.report_uuid?`<a class="link" target="_blank" href="/api/reports/${encodeURIComponent(x.report_uuid)}/view">查看</a>`:'—';return `<tr><td class="left">${esc(x.display_name||x.rmu_name)}</td><td>${esc(x.subcontrolarea_name||'—')}</td><td>${esc(x.substation_name||'—')}</td><td>${esc(x.feeder_name||'—')}</td><td>${esc(x.rmu_type||'—')}</td><td>${badgeStatus(x.status)}</td><td>${badgeVerdict(x.verdict)}</td><td>${esc(x.tested_at||'—')}</td><td>${esc(x.lead||'—')}</td><td>${report}</td></tr>`}).join(''):`<tr><td colspan="10" class="empty">${coverage?'没有匹配的智能设备':'暂无历史测试记录'}</td></tr>`;
-  $('export').disabled=false;
+  lastData=d;const t0=d.totals||{};const coverage=d.coverage_available===true;
+  $('m-total-label').textContent=coverage?t('smartTotal'):t('historyDevices');
+  $('feeder-total-head').textContent=coverage?t('totalDevice'):t('historyDevice');
+  $('m-total').textContent=valueOrDash(t0.total);$('m-tested').textContent=valueOrDash(t0.tested);$('m-progress').textContent=valueOrDash(t0.in_progress);$('m-untested').textContent=valueOrDash(t0.untested);$('m-pass').textContent=valueOrDash(t0.passed);$('m-conditional').textContent=valueOrDash(t0.conditional);$('m-fail').textContent=valueOrDash(t0.failed);$('m-completion').textContent=pct(t0.completion_rate);$('m-pass-rate').textContent=pct(t0.pass_rate);
+  $('mode').textContent=coverage?t('currentCoverage'):t('currentHistory');$('source').textContent=t('dataSource')+sourceLabel(d.inventory_source);$('refresh').textContent=t('refreshTime')+(coverage?(d.inventory_refreshed_at||'—'):t('refreshNotNeeded'));$('generated').textContent=t('generatedTime')+(d.generated_at||'—');
+  $('warning').textContent=warningText(d.warning);$('warning').classList.toggle('show',!!d.warning);
+  const fs=Array.isArray(d.feeders)?d.feeders:[];$('feeder-rows').innerHTML=fs.length?fs.map(x=>`<tr><td class="left">${esc(x.feeder)}</td><td>${valueOrDash(x.total)}</td><td>${valueOrDash(x.tested)}</td><td>${valueOrDash(x.in_progress)}</td><td>${valueOrDash(x.untested)}</td><td>${valueOrDash(x.passed)}</td><td>${valueOrDash(x.conditional)}</td><td>${valueOrDash(x.failed)}</td><td>${pct(x.completion_rate)}</td><td>${pct(x.pass_rate)}</td></tr>`).join(''):`<tr><td colspan="10" class="empty">${esc(coverage?t('noSmart'):t('noHistory'))}</td></tr>`;
+  const ds=Array.isArray(d.devices)?d.devices:[];$('device-rows').innerHTML=ds.length?ds.map(x=>{const report=x.report_uuid?`<a class="link" target="_blank" href="/api/reports/${encodeURIComponent(x.report_uuid)}/view">${esc(t('view'))}</a>`:'—';return `<tr><td class="left">${esc(x.display_name||x.rmu_name)}</td><td>${esc(x.subcontrolarea_name||'—')}</td><td>${esc(x.substation_name||'—')}</td><td>${esc(x.feeder_name||'—')}</td><td>${esc(x.rmu_type||'—')}</td><td>${badgeStatus(x.status)}</td><td>${badgeVerdict(x.verdict)}</td><td>${esc(x.tested_at||'—')}</td><td>${esc(x.lead||'—')}</td><td>${report}</td></tr>`}).join(''):`<tr><td colspan="10" class="empty">${esc(coverage?t('noSmart'):t('noHistory'))}</td></tr>`;$('export').disabled=false;
 }
-async function load(){
-  const f=filters();lastFilters=f;$('query').disabled=true;$('export').disabled=true;
-  try{const r=await fetch('/api/dashboard?'+qs(f).toString(),{cache:'no-store'});const d=await r.json();if(!r.ok||d.ok===false)throw new Error(d.error||'查询失败');render(d)}catch(e){alert('测试总览查询失败：'+(e.message||e))}finally{$('query').disabled=false}
-}
+async function load(){const f=filters();lastFilters=f;$('query').disabled=true;$('export').disabled=true;try{const r=await fetch('/api/dashboard?'+qs(f).toString(),{cache:'no-store'});const d=await r.json();if(!r.ok||d.ok===false)throw new Error(d.error||'query failed');render(d)}catch(e){console.error('dashboard query failed',e);alert(t('queryFail').replace(/：$/,'').replace(/: $/,''))}finally{$('query').disabled=false}}
 $('filter-form').addEventListener('submit',e=>{e.preventDefault();load()});
-$('export').addEventListener('click',async()=>{if(!lastFilters)return;const b=$('export');b.disabled=true;$('export-result').textContent='正在生成总体报表…';try{const r=await fetch('/api/dashboard/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filters:lastFilters})});const d=await r.json();if(!r.ok||d.ok===false)throw new Error(d.error||'导出失败');const id=d.summary_uuid;const format=d.pdf_saved?'pdf':'html';$('export-result').innerHTML=`已归档　<a class="link" href="/api/summary-reports/${encodeURIComponent(id)}/download?format=${format}">下载${d.pdf_saved?' PDF':' HTML'}</a>　<a class="link" href="/api/summary-reports/${encodeURIComponent(id)}/download?format=json">下载 JSON</a>`}catch(e){$('export-result').textContent='导出失败：'+(e.message||e)}finally{b.disabled=false}});
+$('export').addEventListener('click',async()=>{if(!lastFilters)return;const b=$('export');b.disabled=true;$('export-result').textContent=t('exporting');try{const r=await fetch('/api/dashboard/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filters:lastFilters,lang})});const d=await r.json();if(!r.ok||d.ok===false)throw new Error(d.error||'export failed');const id=d.summary_uuid;const format=d.pdf_saved?'pdf':'html';$('export-result').innerHTML=`${esc(t('archived'))}　<a class="link" href="/api/summary-reports/${encodeURIComponent(id)}/download?format=${format}">${esc(t('download'))}${d.pdf_saved?' PDF':' HTML'}</a>　<a class="link" href="/api/summary-reports/${encodeURIComponent(id)}/download?format=json">${esc(t('download'))} JSON</a>`}catch(e){console.error('dashboard export failed',e);$('export-result').textContent=t('exportFail').replace(/：$/,'').replace(/: $/,'')}finally{b.disabled=false}});
+$('lang-zh').onclick=()=>setLang('zh');$('lang-en').onclick=()=>setLang('en');applyI18n();
 load();
 </script>
 </body>

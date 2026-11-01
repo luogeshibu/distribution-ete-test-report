@@ -17,7 +17,9 @@ def test_server_rendered_report_uses_distribution_device_search_title():
     assert "1. 配网环网柜查询" not in html
 
 
-def test_rmu_input_label_and_search_scope_are_unchanged():
+def test_device_input_label_matches_distribution_device_scope():
     html = _render_mapping_section([])
-    assert "环网柜名称（RMU Name）" in html
-    assert "RMU Name" in html
+    assert 'data-live-zh="">设备名称</span>' in html
+    assert 'data-live-en="" style="display:none">Device Name</span>' in html
+    assert "Device Name" in html
+    assert "环网柜名称（RMU Name）" not in html

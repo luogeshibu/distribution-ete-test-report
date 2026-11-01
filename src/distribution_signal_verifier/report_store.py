@@ -240,8 +240,31 @@ class ReportStore:
         )
 
     @staticmethod
-    def _summary_verdict(device_verdicts: Mapping[str, Any], devices: Sequence[Mapping[str, Any]]) -> str:
-        values = [_text(device_verdicts.get(_text(item.get("rmu_name")))) for item in devices]
+    def _device_verdict_value(device_verdicts: Mapping[str, Any], device: Mapping[str, Any]) -> str:
+        """Resolve one device verdict by exact identity before legacy short name.
+
+        New UI state keys verdicts by the operator-selected full ADMS GSS FID.
+        Falling back to the short RMU name is kept only for old archives.
+        """
+        rmu_name = _text(device.get("rmu_name"))
+        display_name = _text(device.get("adms_gss_fid") or device.get("display_name"))
+        combined_id = _text(device.get("combined_id"))
+        candidates = []
+        if display_name:
+            candidates.extend((f"fid:{display_name}", display_name))
+        if combined_id:
+            candidates.extend((f"id:{combined_id}", combined_id))
+        if rmu_name:
+            candidates.append(rmu_name)
+        for key in candidates:
+            value = _text(device_verdicts.get(key))
+            if value:
+                return value
+        return ""
+
+    @classmethod
+    def _summary_verdict(cls, device_verdicts: Mapping[str, Any], devices: Sequence[Mapping[str, Any]]) -> str:
+        values = [cls._device_verdict_value(device_verdicts, item) for item in devices]
         values = [value for value in values if value]
         if not values:
             return ""
@@ -277,6 +300,8 @@ class ReportStore:
         meta = snapshot.get("meta") if isinstance(snapshot.get("meta"), Mapping) else {}
         devices_raw = snapshot.get("distribution_mappings")
         devices: list[Mapping[str, Any]] = [item for item in devices_raw if isinstance(item, Mapping)] if isinstance(devices_raw, list) else []
+        if not any(any(_text(device.get(key)) for key in ("adms_gss_fid", "combined_id", "rmu_name")) for device in devices):
+            raise ValueError("Select at least one device before saving a report")
         verdicts = meta.get("device_verdicts") if isinstance(meta.get("device_verdicts"), Mapping) else {}
         is_draft = bool(payload.get("is_draft"))
 
@@ -404,7 +429,7 @@ class ReportStore:
                         _text(device.get("nop")), _text(device.get("function_location")),
                         _text(device.get("ip")), _text(device.get("protocol_name")),
                         _text(device.get("feeder_name")), _text(device.get("substation_name")),
-                        _text(device.get("subcontrolarea_name")), _text(verdicts.get(rmu_name)),
+                        _text(device.get("subcontrolarea_name")), self._device_verdict_value(verdicts, device),
                     ),
                 )
             connection.commit()
@@ -425,6 +450,109 @@ class ReportStore:
             "is_draft": is_draft,
             "pdf_saved": pdf_saved,
             "device_count": len(devices),
+        }
+
+    def import_json_snapshot(
+        self,
+        snapshot: Mapping[str, Any],
+        *,
+        client_ip: str = "",
+        software_version: str = "",
+    ) -> dict[str, Any]:
+        """Import a portable JSON snapshot as a server-side draft.
+
+        SQLite remains the authoritative history index.  The JSON snapshot is
+        preserved verbatim (plus archive metadata), while HTML/PDF are left
+        empty until the operator opens the draft with Continue Test and saves
+        it from the current report UI.
+        """
+        if not isinstance(snapshot, Mapping):
+            raise ValueError("snapshot is required")
+        meta = snapshot.get("meta") if isinstance(snapshot.get("meta"), Mapping) else {}
+        devices_raw = snapshot.get("distribution_mappings")
+        devices: list[Mapping[str, Any]] = [
+            item for item in devices_raw if isinstance(item, Mapping)
+        ] if isinstance(devices_raw, list) else []
+        verdicts = meta.get("device_verdicts") if isinstance(meta.get("device_verdicts"), Mapping) else {}
+
+        now = _now_local()
+        created_at = now.isoformat(timespec="seconds")
+        updated_at = created_at
+        report_uuid = str(uuid.uuid4())
+        report_dir = self.reports_dir / now.strftime("%Y") / now.strftime("%m") / now.strftime("%d") / report_uuid
+        report_dir.mkdir(parents=True, exist_ok=False)
+        snapshot_path = report_dir / "snapshot.json"
+
+        snapshot_doc = dict(snapshot)
+        snapshot_doc["archive"] = {
+            "report_uuid": report_uuid,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "finalized_at": "",
+            "status": "draft",
+            "software_version": software_version,
+            "client_ip": client_ip,
+            "source": "json_import",
+        }
+        self._write_text_atomic(snapshot_path, json.dumps(snapshot_doc, ensure_ascii=False, indent=2))
+
+        report_no = _text(meta.get("report_id"))
+        verdict_summary = self._summary_verdict(verdicts, devices)
+        relative_snapshot = str(snapshot_path.relative_to(self.application_root)).replace("\\", "/")
+        connection = self._connect()
+        try:
+            connection.execute(
+                """
+                INSERT INTO reports(
+                    report_uuid, report_no, created_at, test_date_from, test_date_to,
+                    phase, lead, testers, adms_version, verdict_summary, is_draft,
+                    device_count, software_version, client_ip, pdf_path, html_path, snapshot_path,
+                    updated_at, finalized_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    report_uuid, report_no, created_at, _text(meta.get("date_from")),
+                    _text(meta.get("date_to")), _text(meta.get("phase")), _text(meta.get("lead")),
+                    _text(meta.get("testers")), _text(meta.get("adms_version")), verdict_summary,
+                    1, len(devices), software_version, client_ip, "", "", relative_snapshot,
+                    updated_at, "",
+                ),
+            )
+            for seq, device in enumerate(devices, 1):
+                rmu_name = _text(device.get("rmu_name"))
+                connection.execute(
+                    """
+                    INSERT INTO report_devices(
+                        report_uuid, seq, rmu_name, display_name, rmu_type, smart_type,
+                        nop, function_location, ip, protocol, feeder_name,
+                        substation_name, subcontrolarea_name, verdict
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        report_uuid, seq, rmu_name, _text(device.get("adms_gss_fid") or device.get("display_name") or rmu_name),
+                        _text(device.get("rmu_type")), _text(device.get("smart_type")),
+                        _text(device.get("nop")), _text(device.get("function_location")),
+                        _text(device.get("ip")), _text(device.get("protocol_name") or device.get("protocol")),
+                        _text(device.get("feeder_name")), _text(device.get("substation_name")),
+                        _text(device.get("subcontrolarea_name")), self._device_verdict_value(verdicts, device),
+                    ),
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            shutil.rmtree(report_dir, ignore_errors=True)
+            raise
+        finally:
+            connection.close()
+
+        return {
+            "report_uuid": report_uuid,
+            "report_no": report_no,
+            "created_at": created_at,
+            "updated_at": updated_at,
+            "is_draft": True,
+            "device_count": len(devices),
+            "json_imported": True,
         }
 
     def register_report_pdf(self, report_uuid: str, pdf_path: Path) -> dict[str, Any]:
@@ -520,6 +648,8 @@ class ReportStore:
                 ]
                 report["devices"] = devices
                 report["pdf_available"] = bool(report.get("pdf_path"))
+                report["html_available"] = bool(report.get("html_path"))
+                report["json_available"] = bool(report.get("snapshot_path"))
             return report_rows
         finally:
             connection.close()
@@ -538,6 +668,8 @@ class ReportStore:
                 ).fetchall()
             ]
             report["pdf_available"] = bool(report.get("pdf_path"))
+            report["html_available"] = bool(report.get("html_path"))
+            report["json_available"] = bool(report.get("snapshot_path"))
             return report
         finally:
             connection.close()

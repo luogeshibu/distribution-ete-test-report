@@ -43,7 +43,9 @@ def test_draft_pdf_generation_keeps_draft_status_and_saved_timestamp(tmp_path, m
     assert after['updated_at'] == before['updated_at']
     assert after['finalized_at'] == before['finalized_at'] == ''
     assert after['pdf_available'] is True
-    assert 'print-draft' in rendered['html']
+    assert 'print-draft' not in rendered['html']
+    assert 'print-final' in rendered['html']
+    assert store.resolve_report_file(saved['report_uuid'], 'pdf').with_suffix('.watermark-free').exists()
     assert store.resolve_report_file(saved['report_uuid'], 'pdf').read_bytes().startswith(b'%PDF-1.4')
 
 
