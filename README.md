@@ -1,7 +1,12 @@
 # Distribution ETE Test Report
 
-V1.2.71
+V1.2.72
 
+
+## v1.2.72 history result totals
+
+- Show counts for Pass, Pass with comments, and Fail beside the History report total.
+- Counts reflect the reports currently returned by the active search filters.
 
 ## v1.2.71 show latest duplicate report without deleting history
 
@@ -76,7 +81,7 @@ The current UI language is now controlled **only** by the explicit 中文 / EN b
 This release intentionally does **not** change Oracle SQL, device-search SQL, exact mouse-selected device behavior, duplicate-name handling, or read-only enforcement.
 
 ## Version
-V1.2.71
+V1.2.72
 
 ## v1.2.57 strict single-language UI
 

@@ -41,4 +41,4 @@ def test_dashboard_language_switch_rerenders_loaded_data_without_requery():
 
 
 def test_version_is_1248():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.71"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.72"

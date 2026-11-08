@@ -1,3 +1,8 @@
+# v1.2.72 - 2026-11-08
+
+- Show Pass, Pass with comments, and Fail report counts beside the History result total.
+- Recalculate the counts for the current history search results.
+
 # v1.2.71 - 2026-11-08
 
 - Show only the newest historical report for each exact device set, ignoring device order.
