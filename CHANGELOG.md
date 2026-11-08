@@ -1,3 +1,9 @@
+# v1.2.71 - 2026-11-08
+
+- Show only the newest historical report for each exact device set, ignoring device order.
+- Preserve every older SQLite entry and JSON / HTML / PDF archive when a newer report is created.
+- Apply History filters after selecting the latest report for each device set.
+
 # v1.2.70 - 2026-11-08
 
 - When a signal point Result is set to “—”, automatically reset its Received field to “—” as well.

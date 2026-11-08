@@ -33,4 +33,4 @@ def test_device_navigation_query_parameters_are_unchanged():
 
 
 def test_version():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.70"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.71"

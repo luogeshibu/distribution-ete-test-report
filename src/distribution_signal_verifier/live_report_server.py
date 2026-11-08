@@ -1088,12 +1088,13 @@ def _live_script(
     return String(item?.rmu_name || '').trim();
   }}
 
-  function navigateSelectedRmus() {{
+  function navigateSelectedRmus(startNewReport = false) {{
     // Language is global and persisted independently from device navigation.
     // Do not read, write, or hand off language here.
     const params = new URLSearchParams();
     params.set('network', 'distribution');
     if (selectedRmus.length) params.set('rmu', selectedRmus.join(','));
+    if (startNewReport) params.set('new_report', '1');
     // Adding/removing an RMU requires a full page render because the point list
     // comes from a fresh read-only Oracle query. Preserve the current in-memory
     // test through a one-time session handoff so already tested devices are not
@@ -1124,6 +1125,7 @@ def _live_script(
       return false;
     }}
     const exact = Array.isArray(matches.exact) ? matches.exact : [];
+    let startNewReport = false;
     if (exact.length) {{
       const old = exact[0];
       const choice = await chooseDuplicateAction();
@@ -1146,21 +1148,22 @@ def _live_script(
         return true;
       }}
       try {{
-        const response = await fetch('/api/reports/replace-device-set', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{devices:selectedRmus}})}});
+        const response = await fetch('/api/reports/prepare-new-device-set', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{devices:selectedRmus}})}});
         const data = await response.json();
         if (!response.ok || data.ok === false) throw new Error(data.error || 'replace failed');
       }} catch (error) {{
         console.error('replace duplicate reports failed', error);
-        window.alert(liveText('旧报告移除失败，未开始新测试。请刷新后重试。', 'Could not remove the old report. The new test was not started; refresh and try again.'));
+        window.alert(liveText('无法准备新测试，旧历史记录未修改。请刷新后重试。', 'Could not prepare the new test. Existing history was not changed; refresh and try again.'));
         return false;
       }}
+      startNewReport = true;
       if (!navigateOnNoMatch) return true;
     }} else if (Array.isArray(matches.overlaps) && matches.overlaps.length) {{
       window.alert(liveText('所选设备曾出现在包含其他设备的历史报告中，仍可继续单独测试。', 'The selected device appears in reports with other devices. You can still test it separately.'));
     }}
     if (!navigateOnNoMatch) return true;
     if (typeof window.confirmUnsavedBeforeNavigation === 'function' && !(await window.confirmUnsavedBeforeNavigation())) return;
-    navigateSelectedRmus();
+    navigateSelectedRmus(startNewReport);
     return true;
   }}
 
@@ -1169,7 +1172,7 @@ def _live_script(
       const dialog = document.createElement('dialog');
       dialog.style.cssText = 'max-width:min(560px,calc(100vw - 32px));border:1px solid #cbd7d3;border-radius:10px;padding:20px;color:#23332e;box-shadow:0 14px 50px #0003;font:14px Segoe UI,Arial,sans-serif';
       const message = document.createElement('p');
-      message.textContent = liveText('这组设备已经有历史报告。请选择继续最新的旧报告，或移除旧报告并重新测试。', 'A report for this exact device set already exists. Continue the latest report or remove the old report and start over.');
+      message.textContent = liveText('这组设备已有历史报告。请选择继续最新报告，或开始新的测试（旧报告会保留在历史数据中）。', 'A report for this exact device set already exists. Continue the latest report or start a new test (older reports remain archived).');
       message.style.cssText = 'margin:0 0 18px;line-height:1.6';
       const actions = document.createElement('div');
       actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap';
@@ -1182,7 +1185,7 @@ def _live_script(
       }};
       actions.append(
         button(liveText('继续旧报告', 'Continue Existing'), 'old', true),
-        button(liveText('重新测试', 'Start New Test'), 'new', false),
+        button(liveText('重新测试（保留旧记录）', 'Start New Test (Keep History)'), 'new', false),
         button(liveText('取消', 'Cancel'), 'cancel', false)
       );
       dialog.append(message, actions);
@@ -1462,7 +1465,13 @@ def _live_script(
     style.textContent = '#tabs button:nth-child(4), #tabs button:nth-child(5) {{ display:none; }}';
     document.head.appendChild(style);
   }}
-  if (selectedRmus.length &&
+  const newReportFlow = new URLSearchParams(window.location.search).get('new_report') === '1';
+  if (newReportFlow) {{
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('new_report');
+    window.history.replaceState({{}}, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+  }}
+  if (!newReportFlow && selectedRmus.length &&
       !(typeof window.getCurrentReportUuid === 'function' && window.getCurrentReportUuid())) {{
     window.setTimeout(() => resolveDeviceSetAndNavigate(false), 0);
   }}
@@ -1619,7 +1628,7 @@ class ReportHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/reports":
                 filters = {key: values[0] for key, values in query.items() if values}
-                items = self.provider.report_store.list_reports(filters)
+                items = self.provider.report_store.list_reports(filters, latest_per_device_set=True)
                 self._json(200, {"ok": True, "items": items})
                 return
             if parsed.path == "/api/reports/device-matches":
@@ -1717,18 +1726,18 @@ class ReportHandler(BaseHTTPRequestHandler):
                 )
                 self._json(201, {"ok": True, **result})
                 return
-            if parsed.path == "/api/reports/replace-device-set":
+            if parsed.path in {"/api/reports/prepare-new-device-set", "/api/reports/replace-device-set"}:
                 data = self._read_json_body()
                 devices = data.get("devices") if isinstance(data.get("devices"), list) else []
-                removed = self.provider.report_store.delete_reports_for_device_set(devices)
-                self._json(200, {"ok": True, "removed": removed})
+                retained = self.provider.report_store.count_reports_for_device_set(devices)
+                self._json(200, {"ok": True, "historical_versions_preserved": retained})
                 return
             if parsed.path == "/api/reports/keep-device-set":
                 data = self._read_json_body()
                 devices = data.get("devices") if isinstance(data.get("devices"), list) else []
                 keep_uuid = str(data.get("keep_report_uuid") or "")
-                removed = self.provider.report_store.keep_latest_report_for_device_set(devices, keep_uuid)
-                self._json(200, {"ok": True, "removed": removed})
+                retained = self.provider.report_store.validate_existing_report_for_device_set(devices, keep_uuid)
+                self._json(200, {"ok": True, "historical_versions_preserved": retained})
                 return
             complete_match = re.fullmatch(r"/api/reports/([0-9a-fA-F-]+)/complete", parsed.path)
             if complete_match:

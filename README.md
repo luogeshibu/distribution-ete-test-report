@@ -1,7 +1,13 @@
 # Distribution ETE Test Report
 
-V1.2.70
+V1.2.71
 
+
+## v1.2.71 show latest duplicate report without deleting history
+
+- History displays only the newest report for an exact device set; device order does not matter.
+- Older reports and their JSON, HTML, PDF, and SQLite records remain stored. Starting a new test never deletes prior report data.
+- Filters apply to the latest report shown for each device set.
 
 ## v1.2.70 signal result synchronization
 
@@ -11,7 +17,7 @@ V1.2.70
 ## v1.2.69 duplicate protection and unsaved changes
 
 - Reports are compared by their complete Device Hierarchy / Device set, with device order ignored.
-- For an exact match, operators can continue the newest report, or remove existing exact-match reports and start over. A device that only appears inside another multi-device report can still be tested alone.
+- For an exact match, operators can continue the newest report or start a new test while retaining the old report data. A device that only appears inside another multi-device report can still be tested alone.
 - Leaving the test page with unsaved changes offers to save them as a draft. Printing a report does not mark the test complete.
 
 ## v1.2.68 explicit test completion
@@ -70,7 +76,7 @@ The current UI language is now controlled **only** by the explicit 中文 / EN b
 This release intentionally does **not** change Oracle SQL, device-search SQL, exact mouse-selected device behavior, duplicate-name handling, or read-only enforcement.
 
 ## Version
-V1.2.70
+V1.2.71
 
 ## v1.2.57 strict single-language UI
 

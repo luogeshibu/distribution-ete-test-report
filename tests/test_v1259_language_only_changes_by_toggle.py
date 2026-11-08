@@ -44,4 +44,4 @@ def test_oracle_query_sql_is_still_read_only():
 
 
 def test_version():
-    assert (ROOT / 'VERSION').read_text(encoding='utf-8').strip() == '1.2.70'
+    assert (ROOT / 'VERSION').read_text(encoding='utf-8').strip() == '1.2.71'

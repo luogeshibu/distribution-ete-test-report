@@ -321,12 +321,6 @@ class ReportStore:
         finally:
             connection.close()
 
-        incoming_device_keys = self._report_device_keys(devices)
-        if incoming_device_keys:
-            duplicates = self.find_reports_for_device_set(incoming_device_keys)["exact"]
-            if any(item.get("report_uuid") != (existing or {}).get("report_uuid") for item in duplicates):
-                raise ValueError("An identical device report already exists; continue the existing report or replace it first")
-
         now = _now_local()
         updated_at = now.isoformat(timespec="seconds")
         if existing:
@@ -505,41 +499,17 @@ class ReportStore:
             connection.close()
         return {"exact": exact, "overlaps": overlaps}
 
-    def delete_reports_for_device_set(self, device_keys: Sequence[str]) -> int:
-        """Remove every older report whose complete device set matches exactly."""
-        return self._delete_matching_reports(self.find_reports_for_device_set(device_keys)["exact"])
+    def count_reports_for_device_set(self, device_keys: Sequence[str]) -> int:
+        """Count exact-set history versions without modifying any stored report."""
+        return len(self.find_reports_for_device_set(device_keys)["exact"])
 
-    def keep_latest_report_for_device_set(self, device_keys: Sequence[str], keep_uuid: str) -> int:
-        """Keep the chosen existing report and remove other exact-set duplicates."""
+    def validate_existing_report_for_device_set(self, device_keys: Sequence[str], keep_uuid: str) -> int:
+        """Validate the chosen latest report and preserve all older archive data."""
         matches = self.find_reports_for_device_set(device_keys)["exact"]
         keep_uuid = _text(keep_uuid)
         if not any(item.get("report_uuid") == keep_uuid for item in matches):
             raise ValueError("selected existing report does not match this device set")
-        return self._delete_matching_reports([item for item in matches if item.get("report_uuid") != keep_uuid])
-
-    def _delete_matching_reports(self, matches: Sequence[Mapping[str, Any]]) -> int:
-        if not matches:
-            return 0
-        connection = self._connect()
-        try:
-            connection.executemany("DELETE FROM reports WHERE report_uuid=?", [(x["report_uuid"],) for x in matches])
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
-        for report in matches:
-            relative = _text(report.get("snapshot_path"))
-            if not relative:
-                continue
-            path = (self.application_root / relative).resolve()
-            try:
-                path.relative_to(self.reports_dir.resolve())
-            except ValueError:
-                continue
-            shutil.rmtree(path.parent, ignore_errors=True)
-        return len(matches)
+        return len(matches) - 1
 
     def import_json_snapshot(
         self,
@@ -698,7 +668,15 @@ class ReportStore:
             connection.close()
         return self.get_report(report_uuid) or {}
 
-    def list_reports(self, filters: Mapping[str, str], limit: int = 300) -> list[dict[str, Any]]:
+    def list_reports(
+        self,
+        filters: Mapping[str, str],
+        limit: int = 300,
+        *,
+        latest_per_device_set: bool = False,
+    ) -> list[dict[str, Any]]:
+        if latest_per_device_set:
+            return self._list_latest_reports(filters, limit)
         clauses = ["1=1"]
         params: list[Any] = []
         date_from = _text(filters.get("date_from"))
@@ -765,6 +743,73 @@ class ReportStore:
                 report["html_available"] = bool(report.get("html_path"))
                 report["json_available"] = bool(report.get("snapshot_path"))
             return report_rows
+        finally:
+            connection.close()
+
+    def _list_latest_reports(self, filters: Mapping[str, str], limit: int) -> list[dict[str, Any]]:
+        """Return the newest report for each exact device set without deleting archives."""
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                "SELECT * FROM reports ORDER BY COALESCE(NULLIF(updated_at, ''), created_at) DESC, created_at DESC"
+            ).fetchall()
+            newest_by_set: dict[frozenset[str], dict[str, Any]] = {}
+            for row in rows:
+                report = dict(row)
+                report["devices"] = [dict(item) for item in connection.execute(
+                    "SELECT * FROM report_devices WHERE report_uuid=? ORDER BY seq",
+                    (report["report_uuid"],),
+                ).fetchall()]
+                keys = frozenset(self._report_device_keys(report["devices"]))
+                # Preserve reports with no resolvable device identity individually.
+                if not keys:
+                    keys = frozenset({"__report__:" + str(report["report_uuid"])})
+                if keys in newest_by_set:
+                    continue
+                report["pdf_available"] = bool(report.get("pdf_path"))
+                report["html_available"] = bool(report.get("html_path"))
+                report["json_available"] = bool(report.get("snapshot_path"))
+                newest_by_set[keys] = report
+
+            unique = list(newest_by_set.values())
+            date_from = _text(filters.get("date_from"))
+            date_to = _text(filters.get("date_to"))
+            device = _text(filters.get("device")).casefold()
+            substation = _text(filters.get("substation")).casefold()
+            feeder = _text(filters.get("feeder")).casefold()
+            lead = _text(filters.get("lead")).casefold()
+            verdict = _text(filters.get("verdict"))
+            status = _text(filters.get("status")).lower()
+
+            def contains(value: Any, needle: str) -> bool:
+                return not needle or needle in _text(value).casefold()
+
+            filtered: list[dict[str, Any]] = []
+            for report in unique:
+                if date_from and _text(report.get("test_date_to")) < date_from:
+                    continue
+                if date_to and _text(report.get("test_date_from")) > date_to:
+                    continue
+                if lead and lead not in _text(report.get("lead")).casefold():
+                    continue
+                if verdict and _text(report.get("verdict_summary")) != verdict:
+                    continue
+                if status == "draft" and not int(report.get("is_draft") or 0):
+                    continue
+                if status == "final" and int(report.get("is_draft") or 0):
+                    continue
+                devices = report["devices"]
+                if device and not any(
+                    contains(item.get("rmu_name"), device) or contains(item.get("display_name"), device)
+                    for item in devices
+                ):
+                    continue
+                if substation and not any(contains(item.get("substation_name"), substation) for item in devices):
+                    continue
+                if feeder and not any(contains(item.get("feeder_name"), feeder) for item in devices):
+                    continue
+                filtered.append(report)
+            return filtered[:max(1, min(int(limit), 1000))]
         finally:
             connection.close()
 

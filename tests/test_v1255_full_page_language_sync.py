@@ -15,4 +15,4 @@ def test_distribution_device_block_uses_main_language_source_of_truth():
 def test_release_does_not_modify_python_query_implementation():
     # The v1.2.55 fix is intentionally frontend-only. Query/read-only code is
     # covered by the existing regression suite and must remain untouched.
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.70"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.71"
