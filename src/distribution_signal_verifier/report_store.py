@@ -499,7 +499,7 @@ class ReportStore:
                     continue
                 if keys == wanted:
                     exact.append(report)
-                elif keys.intersection(wanted):
+                elif len(keys) > 1 and keys.intersection(wanted):
                     overlaps.append(report)
         finally:
             connection.close()
