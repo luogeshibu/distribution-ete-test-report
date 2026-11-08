@@ -2584,6 +2584,10 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       });
       selRes.addEventListener("change", () => {
         p.result = selRes.value;
+        if (!p.result) {
+          p.received = "";
+          selRecv.value = "";
+        }
         if (p.result && !p.selected) {
           p.selected = true;
           cb.checked = true;

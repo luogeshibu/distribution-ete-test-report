@@ -1,7 +1,12 @@
 # Distribution ETE Test Report
 
-V1.2.69
+V1.2.70
 
+
+## v1.2.70 signal result synchronization
+
+- Setting a signal point's Result to “—” now also resets that point's Received value to “—”.
+- Other Result and Received selections behave as before.
 
 ## v1.2.69 duplicate protection and unsaved changes
 
@@ -65,7 +70,7 @@ The current UI language is now controlled **only** by the explicit 中文 / EN b
 This release intentionally does **not** change Oracle SQL, device-search SQL, exact mouse-selected device behavior, duplicate-name handling, or read-only enforcement.
 
 ## Version
-V1.2.69
+V1.2.70
 
 ## v1.2.57 strict single-language UI
 

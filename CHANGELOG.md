@@ -1,3 +1,7 @@
+# v1.2.70 - 2026-11-08
+
+- When a signal point Result is set to “—”, automatically reset its Received field to “—” as well.
+
 # v1.2.69 - 2026-11-08
 
 - Detect duplicate history by the full device set shown in Device Hierarchy / Device, without depending on device order.
