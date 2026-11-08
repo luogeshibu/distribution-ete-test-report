@@ -45,4 +45,4 @@ def test_query_contract_remains_unchanged_and_read_only():
 
 
 def test_version():
-    assert (ROOT / 'VERSION').read_text(encoding='utf-8').strip() == '1.2.67'
+    assert (ROOT / 'VERSION').read_text(encoding='utf-8').strip() == '1.2.69'

@@ -826,6 +826,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     <div class="actions">
       <button type="button" class="ghost" id="btn-reset-current" data-i18n="btnResetCurrent">重置当前测试</button>
       <button type="button" class="ghost" id="btn-save" data-i18n="btnSave">保存当前报告</button>
+      <button type="button" class="ghost" id="btn-complete" data-i18n="btnComplete">确认测试完成</button>
       <div class="data-menu" id="data-menu">
         <button type="button" class="ghost" id="btn-data-menu" data-i18n="btnData" aria-haspopup="true" aria-expanded="false">JSON</button>
         <div class="data-menu-panel" id="data-menu-panel" hidden>
@@ -1177,6 +1178,10 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
   // draft restoration path.
   let currentReportUuid = RESUME_REPORT_UUID;
   let currentReportFinalized = false;
+  let reportDirty = false;
+  function markReportDirty() { reportDirty = true; }
+  window.markReportDirty = markReportDirty;
+  window.getCurrentReportUuid = () => currentReportUuid;
 
   function rememberReportUuid(reportUuid, finalized) {
     currentReportUuid = reportUuid || "";
@@ -1195,6 +1200,13 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       btnHome: "首页",
       btnResetCurrent: "重置当前测试",
       btnSave: "保存当前报告",
+      btnComplete: "确认测试完成",
+      confirmCompleteTest: "确认此测试已经完成？确认后历史状态将标记为正式 / 已完成。",
+      confirmSaveBeforeLeave: "当前报告有未保存的设备或测试结果。点击“确定”先保存为草稿再继续；点击“取消”将不保存并继续离开。",
+      duplicateReportPrompt: "这组设备已经有历史报告。点击“确定”继续原报告；点击“取消”重新测试并替换旧报告。",
+      duplicateDeviceNotice: "所选设备曾出现在其他设备组合的报告中，但仍可单独测试。",
+      toastCompleteFail: "确认完成失败，请先保存报告后重试",
+      toastCompleteSuccess: "测试已确认完成",
       btnData: "JSON",
       btnExportJson: "导出当前 JSON",
       btnImportJson: "导入 JSON 到历史",
@@ -1363,6 +1375,13 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       btnHome: "Home",
       btnResetCurrent: "Reset Current Test",
       btnSave: "Save Current Report",
+      btnComplete: "Confirm Test Complete",
+      confirmCompleteTest: "Confirm this test is complete? It will be marked Final / Completed in history.",
+      confirmSaveBeforeLeave: "This report has unsaved device or test changes. Select OK to save it as a draft before leaving, or Cancel to leave without saving.",
+      duplicateReportPrompt: "A report for this exact device set already exists. Select OK to continue that report, or Cancel to start over and replace it.",
+      duplicateDeviceNotice: "This device appears in reports with other devices. You can still test it on its own.",
+      toastCompleteFail: "Could not confirm completion. Save the report and try again.",
+      toastCompleteSuccess: "Test marked complete",
       btnData: "JSON",
       btnExportJson: "Export Current JSON",
       btnImportJson: "Import JSON to History",
@@ -2964,7 +2983,8 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     ensureSignRole2();
   }
 
-  function goHome() {
+  async function goHome() {
+    if (typeof window.confirmUnsavedBeforeNavigation === "function" && !(await window.confirmUnsavedBeforeNavigation())) return;
     window.location.assign('/?network=distribution');
   }
 
@@ -3050,6 +3070,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     document.getElementById("btn-pass-tab").addEventListener("click", () => bulkSetTabResult("Pass"));
     document.getElementById("btn-fail-tab").addEventListener("click", () => bulkSetTabResult("Fail"));
     document.getElementById("btn-save").addEventListener("click", () => { saveCurrentReport(); });
+    document.getElementById("btn-complete").addEventListener("click", () => { completeCurrentTest(); });
     document.getElementById("btn-data-menu")?.addEventListener("click", (event) => {
       event.stopPropagation();
       toggleDataMenu();
@@ -3074,8 +3095,8 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") closeDataMenu();
     });
-    document.getElementById("btn-dashboard")?.addEventListener("click", () => { window.location.href = "/dashboard"; });
-    document.getElementById("btn-history")?.addEventListener("click", () => { window.location.href = "/history"; });
+    document.getElementById("btn-dashboard")?.addEventListener("click", async () => { if (await window.confirmUnsavedBeforeNavigation()) window.location.href = "/dashboard"; });
+    document.getElementById("btn-history")?.addEventListener("click", async () => { if (await window.confirmUnsavedBeforeNavigation()) window.location.href = "/history"; });
 
     // 用 beforeprint/afterprint，避免 2s 超时在打印对话框未关时还原成「仅当前 Tab」
     let printUiPrevTitle = document.title;
@@ -3283,6 +3304,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       try { data = await response.json(); } catch (e) { /* ignore */ }
       if (!response.ok || data.ok === false) throw new Error(data.error || t("toastArchiveFail"));
       rememberReportUuid(data.report_uuid || currentReportUuid, !data.is_draft);
+      reportDirty = false;
       toast(data.is_draft ? t("toastDraftSaved") : t("toastArchived"));
       return data;
     }
@@ -3303,15 +3325,40 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       }
     }
 
+    async function completeCurrentTest() {
+      if (!hasSelectedDevice()) { toast(t("toastDeviceRequired")); return; }
+      if (!window.confirm(t("confirmCompleteTest"))) return;
+      const button = document.getElementById("btn-complete");
+      if (button) button.disabled = true;
+      try {
+        const saved = await archiveCurrentReport(true);
+        const response = await fetch(`/api/reports/${encodeURIComponent(saved.report_uuid)}/complete`, {method:"POST"});
+        const result = await response.json();
+        if (!response.ok || result.ok === false) throw new Error(result.error || "complete failed");
+        rememberReportUuid(saved.report_uuid, true);
+        toast(t("toastCompleteSuccess"));
+      } catch (error) {
+        console.error("complete test failed", error);
+        toast(t("toastCompleteFail"));
+      } finally { if (button) button.disabled = false; }
+    }
+
     let printBusy = false;
+    let archiveBeforePrint = true;
     async function requestPrint() {
       if (!hasSelectedDevice()) { toast(t("toastDeviceRequired")); return; }
       if (printBusy) return;
       printBusy = true;
       try {
+        if (reportDirty) {
+          const decision = await window.confirmUnsavedBeforeNavigation();
+          if (!decision) return;
+          archiveBeforePrint = decision !== "discard";
+        }
         await requestFormalPrint();
       } finally {
         printBusy = false;
+        archiveBeforePrint = true;
       }
     }
 
@@ -3335,7 +3382,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       printAuthorized = true;
       document.documentElement.classList.add("print-auth");
       try {
-        await archiveCurrentReport(false);
+        if (archiveBeforePrint) await archiveCurrentReport(true);
       } catch (error) {
         console.error("server report archive failed", error);
         toast(t("toastArchiveFail"));
@@ -3372,11 +3419,42 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       requestPrint();
     });
 
+    document.addEventListener("input", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.id !== "distribution-rmu-input" && target.matches("input,textarea")) markReportDirty();
+    }, true);
+    document.addEventListener("change", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.id !== "distribution-rmu-input" && target.matches("input,select,textarea")) markReportDirty();
+    }, true);
+    // A freshly opened report with an RMU is meaningful unsaved work even
+    // before any signal point has been edited.
+    reportDirty = !currentReportUuid && hasSelectedDevice();
+
     window.addEventListener("keydown", (ev) => {
       if ((ev.ctrlKey || ev.metaKey) && (ev.key === "p" || ev.key === "P")) {
         ev.preventDefault();
         requestPrint();
       }
+    });
+
+    window.confirmUnsavedBeforeNavigation = async function () {
+      if (!reportDirty) return "clean";
+      if (!window.confirm(t("confirmSaveBeforeLeave"))) { reportDirty = false; return "discard"; }
+      try {
+        await archiveCurrentReport(true);
+        reportDirty = false;
+        return "saved";
+      } catch (error) {
+        console.error("save before leaving failed", error);
+        toast(t("toastDraftSaveFail"));
+        return false;
+      }
+    };
+    window.addEventListener("beforeunload", (event) => {
+      if (!reportDirty) return;
+      event.preventDefault();
+      event.returnValue = "";
     });
   }
 

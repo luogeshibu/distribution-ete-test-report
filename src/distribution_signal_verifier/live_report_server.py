@@ -168,9 +168,21 @@ def _application_version() -> str:
         return "unknown"
 
 
+class PdfGenerationError(ValueError):
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
 def _find_print_browser() -> Path | None:
     """Find a local Edge/Chrome/Chromium binary for server-side PDF archiving."""
-    names = ["msedge", "msedge.exe", "chrome", "chrome.exe", "chromium", "chromium.exe", "chromium-browser"]
+    configured = os.environ.get("ETE_PRINT_BROWSER", "").strip().strip('"')
+    if configured:
+        candidate = Path(configured)
+        if candidate.is_file():
+            return candidate
+        LOGGER.warning("ETE_PRINT_BROWSER does not point to a browser executable")
+    names = ["chrome", "chrome.exe", "msedge", "msedge.exe", "chromium", "chromium.exe", "chromium-browser"]
     for name in names:
         resolved = shutil.which(name)
         if resolved:
@@ -183,8 +195,8 @@ def _find_print_browser() -> Path | None:
             continue
         root = Path(raw)
         candidates.extend([
-            root / "Microsoft" / "Edge" / "Application" / "msedge.exe",
             root / "Google" / "Chrome" / "Application" / "chrome.exe",
+            root / "Microsoft" / "Edge" / "Application" / "msedge.exe",
         ])
     for candidate in candidates:
         if candidate.is_file():
@@ -225,32 +237,44 @@ def _render_pdf_with_browser(html_path: Path, pdf_path: Path) -> bool:
         return False
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
     file_url = html_path.resolve().as_uri()
-    with tempfile.TemporaryDirectory(prefix="ete-pdf-") as profile:
+    with tempfile.TemporaryDirectory(prefix="ete-pdf-", ignore_cleanup_errors=True) as profile:
         base = [
             str(browser),
             "--headless=new",
             "--disable-gpu",
             "--no-sandbox",
             "--disable-dev-shm-usage",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--virtual-time-budget=5000",
             "--run-all-compositor-stages-before-draw",
             "--no-pdf-header-footer",
             f"--user-data-dir={profile}",
             f"--print-to-pdf={pdf_path.resolve()}",
             file_url,
         ]
-        try:
-            result = subprocess.run(base, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            result = None
-        if result is None or result.returncode != 0 or not pdf_path.exists():
-            # Compatibility fallback for older browser builds.
-            fallback = [item for item in base if item != "--headless=new"]
-            fallback.insert(1, "--headless")
+        for mode in ("--headless=new", "--headless", "--headless=old"):
+            command = [mode if item == "--headless=new" else item for item in base]
+            pdf_path.unlink(missing_ok=True)
             try:
-                subprocess.run(fallback, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45, check=False)
-            except (OSError, subprocess.TimeoutExpired):
-                return False
-    return pdf_path.is_file() and pdf_path.stat().st_size > 0
+                result = subprocess.run(
+                    command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    timeout=45, check=False,
+                )
+            except subprocess.TimeoutExpired:
+                LOGGER.warning("PDF browser timed out: browser=%s mode=%s", browser, mode)
+                continue
+            except OSError:
+                LOGGER.exception("PDF browser could not start: browser=%s mode=%s", browser, mode)
+                continue
+            if pdf_path.is_file() and pdf_path.stat().st_size > 0:
+                return True
+            LOGGER.warning(
+                "PDF browser produced no PDF: browser=%s mode=%s exit=%s stderr=%s",
+                browser, mode, result.returncode,
+                (result.stderr or b"").decode("utf-8", errors="replace")[-4000:],
+            )
+    return False
 
 
 class LiveDataProvider:
@@ -282,7 +306,9 @@ class LiveDataProvider:
         self.dashboard_template = dashboard_path.read_text(encoding="utf-8") if dashboard_path.is_file() else ""
 
     def archive_report(self, data: Mapping[str, Any], client_ip: str = "") -> dict[str, Any]:
-        is_draft = bool(data.get("is_draft"))
+        # Printing and saving are progress snapshots; only explicit completion changes status.
+        is_draft = True
+        data = dict(data, is_draft=True)
         if not is_draft and isinstance(data.get("html"), str):
             data = dict(data, html=_formal_print_html(data["html"]))
         return self.report_store.save_report(
@@ -408,7 +434,7 @@ class LiveDataProvider:
         if html_path is None:
             raise ValueError("archived HTML snapshot not found")
         if _find_print_browser() is None:
-            raise ValueError("无法生成 PDF：服务端未找到 Edge / Chrome / Chromium。")
+            raise PdfGenerationError("pdf_browser_missing")
 
         report_dir = html_path.parent
         pdf_path = report_dir / "report.pdf"
@@ -422,13 +448,19 @@ class LiveDataProvider:
             staging_html.write_text(_formal_print_html(html_path.read_text(encoding="utf-8")), encoding="utf-8")
             source_html = staging_html
             if not _render_pdf_with_browser(source_html, staging_pdf):
-                raise ValueError("PDF 生成失败，请检查服务端 Edge / Chrome / Chromium。")
+                raise PdfGenerationError("pdf_browser_failed")
             staging_pdf.replace(pdf_path)
             pdf_path.with_suffix(".watermark-free").write_text("1", encoding="ascii")
             saved = self.report_store.register_report_pdf(report_uuid, pdf_path)
+        except OSError as exc:
+            LOGGER.exception("PDF archive file operation failed: report=%s", report_uuid)
+            raise PdfGenerationError("pdf_file_failed") from exc
         finally:
-            staging_pdf.unlink(missing_ok=True)
-            staging_html.unlink(missing_ok=True)
+            for staging_path in (staging_pdf, staging_html):
+                try:
+                    staging_path.unlink(missing_ok=True)
+                except OSError:
+                    LOGGER.warning("Could not remove PDF staging file: %s", staging_path)
 
         return {
             "report_uuid": report_uuid,
@@ -1075,15 +1107,107 @@ def _live_script(
     window.location.assign('/?' + params.toString());
   }}
 
-  function openRmu(selector) {{
-    const clean = String(selector || '').trim();
-    if (clean && !selectedRmus.includes(clean)) selectedRmus.push(clean);
-    // compatibility note: params.set('rmu', name) was the original single-select behavior.
-    // The existing query still resolves one RMU at a time; only the URL list is extended at the UI layer.
+  async function resolveDeviceSetAndNavigate(navigateOnNoMatch = true) {{
+    const params = new URLSearchParams();
+    selectedRmus.forEach((value) => params.append('device', value));
+    const currentId = typeof window.getCurrentReportUuid === 'function' ? window.getCurrentReportUuid() : '';
+    if (currentId) params.set('exclude', currentId);
+    let matches = {{exact:[], overlaps:[]}};
+    try {{
+      const response = await fetch('/api/reports/device-matches?' + params.toString(), {{cache:'no-store'}});
+      const data = await response.json();
+      if (!response.ok || data.ok === false) throw new Error(data.error || 'duplicate lookup failed');
+      matches = data;
+    }} catch (error) {{
+      console.error('device duplicate lookup failed', error);
+      window.alert(liveText('无法检查历史重复报告，请稍后重试；本次未打开设备。', 'Could not check report history. Try again later; the device was not opened.'));
+      return false;
+    }}
+    const exact = Array.isArray(matches.exact) ? matches.exact : [];
+    if (exact.length) {{
+      const old = exact[0];
+      const choice = await chooseDuplicateAction();
+      if (choice === 'cancel') return false;
+      if (choice === 'old') {{
+        try {{
+          const response = await fetch('/api/reports/keep-device-set', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{devices:selectedRmus, keep_report_uuid:old.report_uuid}})}});
+          const data = await response.json();
+          if (!response.ok || data.ok === false) throw new Error(data.error || 'deduplicate failed');
+        }} catch (error) {{
+          console.error('keep existing report failed', error);
+          window.alert(liveText('无法整理重复历史报告，未打开旧报告。请刷新后重试。', 'Could not clean up duplicate history, so the existing report was not opened. Refresh and try again.'));
+          return false;
+        }}
+        const url = new URL('/?', window.location.origin);
+        url.searchParams.set('network', 'distribution');
+        url.searchParams.set('rmu', selectedRmus.join(','));
+        url.searchParams.set('resume', old.report_uuid);
+        window.location.assign(url.toString());
+        return true;
+      }}
+      try {{
+        const response = await fetch('/api/reports/replace-device-set', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body:JSON.stringify({{devices:selectedRmus}})}});
+        const data = await response.json();
+        if (!response.ok || data.ok === false) throw new Error(data.error || 'replace failed');
+      }} catch (error) {{
+        console.error('replace duplicate reports failed', error);
+        window.alert(liveText('旧报告移除失败，未开始新测试。请刷新后重试。', 'Could not remove the old report. The new test was not started; refresh and try again.'));
+        return false;
+      }}
+      if (!navigateOnNoMatch) return true;
+    }} else if (Array.isArray(matches.overlaps) && matches.overlaps.length) {{
+      window.alert(liveText('所选设备曾出现在包含其他设备的历史报告中，仍可继续单独测试。', 'The selected device appears in reports with other devices. You can still test it separately.'));
+    }}
+    if (!navigateOnNoMatch) return true;
+    if (typeof window.confirmUnsavedBeforeNavigation === 'function' && !(await window.confirmUnsavedBeforeNavigation())) return;
     navigateSelectedRmus();
+    return true;
   }}
 
-  function removeRmu(name, idAlias) {{
+  function chooseDuplicateAction() {{
+    return new Promise((resolve) => {{
+      const dialog = document.createElement('dialog');
+      dialog.style.cssText = 'max-width:min(560px,calc(100vw - 32px));border:1px solid #cbd7d3;border-radius:10px;padding:20px;color:#23332e;box-shadow:0 14px 50px #0003;font:14px Segoe UI,Arial,sans-serif';
+      const message = document.createElement('p');
+      message.textContent = liveText('这组设备已经有历史报告。请选择继续最新的旧报告，或移除旧报告并重新测试。', 'A report for this exact device set already exists. Continue the latest report or remove the old report and start over.');
+      message.style.cssText = 'margin:0 0 18px;line-height:1.6';
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap';
+      const button = (label, value, primary) => {{
+        const item = document.createElement('button');
+        item.type = 'button'; item.textContent = label;
+        item.style.cssText = 'border:1px solid #0b795e;border-radius:6px;padding:8px 12px;background:' + (primary ? '#0b795e;color:white' : 'white;color:#0b795e') + ';cursor:pointer';
+        item.addEventListener('click', () => {{ dialog.close(value); }});
+        return item;
+      }};
+      actions.append(
+        button(liveText('继续旧报告', 'Continue Existing'), 'old', true),
+        button(liveText('重新测试', 'Start New Test'), 'new', false),
+        button(liveText('取消', 'Cancel'), 'cancel', false)
+      );
+      dialog.append(message, actions);
+      document.body.appendChild(dialog);
+      dialog.addEventListener('close', () => {{ const value = dialog.returnValue || 'cancel'; dialog.remove(); resolve(value); }}, {{once:true}});
+      if (typeof dialog.showModal === 'function') dialog.showModal();
+      else {{
+        dialog.remove();
+        resolve(window.confirm(liveText('这组设备已有历史报告。确定继续旧报告；取消重新测试。', 'An exact-match report exists. OK continues it; Cancel starts a new test.')) ? 'old' : 'new');
+      }}
+    }});
+  }}
+
+  async function openRmu(selector) {{
+    const clean = String(selector || '').trim();
+    const added = !!clean && !selectedRmus.includes(clean);
+    if (added) selectedRmus.push(clean);
+    // compatibility note: params.set('rmu', name) was the original single-select behavior.
+    // The existing query still resolves one RMU at a time; only the URL list is extended at the UI layer.
+    const proceed = await resolveDeviceSetAndNavigate();
+    if (!proceed && added) selectedRmus.splice(selectedRmus.indexOf(clean), 1);
+  }}
+
+  async function removeRmu(name, idAlias) {{
+    if (typeof window.confirmUnsavedBeforeNavigation === 'function' && !(await window.confirmUnsavedBeforeNavigation())) return;
     const clean = String(name || '').trim();
     const oldId = String(idAlias || '').trim();
     let index = selectedRmus.indexOf(clean);
@@ -1338,6 +1462,10 @@ def _live_script(
     style.textContent = '#tabs button:nth-child(4), #tabs button:nth-child(5) {{ display:none; }}';
     document.head.appendChild(style);
   }}
+  if (selectedRmus.length &&
+      !(typeof window.getCurrentReportUuid === 'function' && window.getCurrentReportUuid())) {{
+    window.setTimeout(() => resolveDeviceSetAndNavigate(false), 0);
+  }}
 }})();
 </script>
 <!-- distribution-live-script-end -->
@@ -1494,6 +1622,15 @@ class ReportHandler(BaseHTTPRequestHandler):
                 items = self.provider.report_store.list_reports(filters)
                 self._json(200, {"ok": True, "items": items})
                 return
+            if parsed.path == "/api/reports/device-matches":
+                devices = [str(value).strip() for value in query.get("device", []) if str(value).strip()]
+                matches = self.provider.report_store.find_reports_for_device_set(devices)
+                exclude = query.get("exclude", [""])[0]
+                if exclude:
+                    matches["exact"] = [item for item in matches["exact"] if item.get("report_uuid") != exclude]
+                    matches["overlaps"] = [item for item in matches["overlaps"] if item.get("report_uuid") != exclude]
+                self._json(200, {"ok": True, **matches})
+                return
             report_match = re.fullmatch(r"/api/reports/([0-9a-fA-F-]+)", parsed.path)
             if report_match:
                 item = self.provider.report_store.get_report(report_match.group(1))
@@ -1580,6 +1717,24 @@ class ReportHandler(BaseHTTPRequestHandler):
                 )
                 self._json(201, {"ok": True, **result})
                 return
+            if parsed.path == "/api/reports/replace-device-set":
+                data = self._read_json_body()
+                devices = data.get("devices") if isinstance(data.get("devices"), list) else []
+                removed = self.provider.report_store.delete_reports_for_device_set(devices)
+                self._json(200, {"ok": True, "removed": removed})
+                return
+            if parsed.path == "/api/reports/keep-device-set":
+                data = self._read_json_body()
+                devices = data.get("devices") if isinstance(data.get("devices"), list) else []
+                keep_uuid = str(data.get("keep_report_uuid") or "")
+                removed = self.provider.report_store.keep_latest_report_for_device_set(devices, keep_uuid)
+                self._json(200, {"ok": True, "removed": removed})
+                return
+            complete_match = re.fullmatch(r"/api/reports/([0-9a-fA-F-]+)/complete", parsed.path)
+            if complete_match:
+                result = self.provider.report_store.complete_report(complete_match.group(1))
+                self._json(200, {"ok": True, "item": result})
+                return
             generate_pdf_match = re.fullmatch(r"/api/reports/([0-9a-fA-F-]+)/generate-pdf", parsed.path)
             if generate_pdf_match:
                 result = self.provider.generate_report_pdf(generate_pdf_match.group(1))
@@ -1593,6 +1748,9 @@ class ReportHandler(BaseHTTPRequestHandler):
                 self._json(201, {"ok": True, **result})
                 return
             self._send(404, "text/plain; charset=utf-8", b"Not found")
+        except PdfGenerationError as exc:
+            LOGGER.warning("PDF generation failed: path=%s code=%s", parsed.path, exc.code)
+            self._json(400, {"ok": False, "error": str(exc), "error_code": exc.code})
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(400, {"ok": False, "error": str(exc)})
         except Exception:

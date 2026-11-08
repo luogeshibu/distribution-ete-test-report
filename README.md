@@ -1,7 +1,19 @@
 # Distribution ETE Test Report
 
-V1.2.67
+V1.2.69
 
+
+## v1.2.69 duplicate protection and unsaved changes
+
+- Reports are compared by their complete Device Hierarchy / Device set, with device order ignored.
+- For an exact match, operators can continue the newest report, or remove existing exact-match reports and start over. A device that only appears inside another multi-device report can still be tested alone.
+- Leaving the test page with unsaved changes offers to save them as a draft. Printing a report does not mark the test complete.
+
+## v1.2.68 explicit test completion
+
+- Save and print actions preserve reports as drafts.
+- Users explicitly confirm completion from the test page or History before a report becomes Final / Completed.
+- Completion time is recorded in the local report archive.
 
 ## v1.2.67 print and archive fixes
 
@@ -53,7 +65,7 @@ The current UI language is now controlled **only** by the explicit 中文 / EN b
 This release intentionally does **not** change Oracle SQL, device-search SQL, exact mouse-selected device behavior, duplicate-name handling, or read-only enforcement.
 
 ## Version
-V1.2.67
+V1.2.69
 
 ## v1.2.57 strict single-language UI
 

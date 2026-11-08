@@ -321,6 +321,12 @@ class ReportStore:
         finally:
             connection.close()
 
+        incoming_device_keys = self._report_device_keys(devices)
+        if incoming_device_keys:
+            duplicates = self.find_reports_for_device_set(incoming_device_keys)["exact"]
+            if any(item.get("report_uuid") != (existing or {}).get("report_uuid") for item in duplicates):
+                raise ValueError("An identical device report already exists; continue the existing report or replace it first")
+
         now = _now_local()
         updated_at = now.isoformat(timespec="seconds")
         if existing:
@@ -451,6 +457,89 @@ class ReportStore:
             "pdf_saved": pdf_saved,
             "device_count": len(devices),
         }
+
+    @staticmethod
+    def _report_device_key(device: Mapping[str, Any]) -> str:
+        """Identity displayed in History's Device Hierarchy / Device column."""
+        display = _text(device.get("display_name") or device.get("adms_gss_fid") or device.get("rmu_name"))
+        if display:
+            return display.casefold()
+        hierarchy = "|".join(_text(device.get(key)) for key in (
+            "subcontrolarea_name", "substation_name", "feeder_name", "rmu_name"
+        ))
+        return hierarchy.casefold()
+
+    @classmethod
+    def _report_device_keys(cls, devices: Sequence[Mapping[str, Any]]) -> set[str]:
+        return {key for item in devices if (key := cls._report_device_key(item))}
+
+    def find_reports_for_device_set(self, device_keys: Sequence[str]) -> dict[str, list[dict[str, Any]]]:
+        """Find exact-set duplicates and reports that merely overlap selected devices."""
+        wanted = {str(key).strip().removeprefix("fid:").casefold() for key in device_keys if str(key).strip()}
+        exact: list[dict[str, Any]] = []
+        overlaps: list[dict[str, Any]] = []
+        if not wanted:
+            return {"exact": exact, "overlaps": overlaps}
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                "SELECT * FROM reports ORDER BY COALESCE(NULLIF(updated_at, ''), created_at) DESC"
+            ).fetchall()
+            for row in rows:
+                report = dict(row)
+                report["devices"] = [dict(item) for item in connection.execute(
+                    "SELECT * FROM report_devices WHERE report_uuid=? ORDER BY seq",
+                    (report["report_uuid"],),
+                ).fetchall()]
+                report["pdf_available"] = bool(report.get("pdf_path"))
+                report["html_available"] = bool(report.get("html_path"))
+                report["json_available"] = bool(report.get("snapshot_path"))
+                keys = self._report_device_keys(report["devices"])
+                if not keys:
+                    continue
+                if keys == wanted:
+                    exact.append(report)
+                elif keys.intersection(wanted):
+                    overlaps.append(report)
+        finally:
+            connection.close()
+        return {"exact": exact, "overlaps": overlaps}
+
+    def delete_reports_for_device_set(self, device_keys: Sequence[str]) -> int:
+        """Remove every older report whose complete device set matches exactly."""
+        return self._delete_matching_reports(self.find_reports_for_device_set(device_keys)["exact"])
+
+    def keep_latest_report_for_device_set(self, device_keys: Sequence[str], keep_uuid: str) -> int:
+        """Keep the chosen existing report and remove other exact-set duplicates."""
+        matches = self.find_reports_for_device_set(device_keys)["exact"]
+        keep_uuid = _text(keep_uuid)
+        if not any(item.get("report_uuid") == keep_uuid for item in matches):
+            raise ValueError("selected existing report does not match this device set")
+        return self._delete_matching_reports([item for item in matches if item.get("report_uuid") != keep_uuid])
+
+    def _delete_matching_reports(self, matches: Sequence[Mapping[str, Any]]) -> int:
+        if not matches:
+            return 0
+        connection = self._connect()
+        try:
+            connection.executemany("DELETE FROM reports WHERE report_uuid=?", [(x["report_uuid"],) for x in matches])
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        for report in matches:
+            relative = _text(report.get("snapshot_path"))
+            if not relative:
+                continue
+            path = (self.application_root / relative).resolve()
+            try:
+                path.relative_to(self.reports_dir.resolve())
+            except ValueError:
+                continue
+            shutil.rmtree(path.parent, ignore_errors=True)
+        return len(matches)
 
     def import_json_snapshot(
         self,
@@ -583,6 +672,31 @@ class ReportStore:
         if report is None:
             raise ValueError("report not found")
         return report
+
+    def complete_report(self, report_uuid: str) -> dict[str, Any]:
+        """Mark an explicitly confirmed report complete without generating a PDF."""
+        report = self.get_report(report_uuid)
+        if report is None:
+            raise ValueError("report not found")
+        if not int(report.get("is_draft") or 0):
+            return report
+        snapshot_path = self.resolve_report_file(report_uuid, "json")
+        if snapshot_path is None:
+            raise ValueError("report snapshot not found")
+        now = _now_local().isoformat(timespec="seconds")
+        snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        snapshot.setdefault("archive", {}).update({"status": "final", "finalized_at": now, "updated_at": now})
+        self._write_text_atomic(snapshot_path, json.dumps(snapshot, ensure_ascii=False, indent=2))
+        connection = self._connect()
+        try:
+            connection.execute("UPDATE reports SET is_draft=0, finalized_at=?, updated_at=? WHERE report_uuid=?", (now, now, report_uuid))
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+        return self.get_report(report_uuid) or {}
 
     def list_reports(self, filters: Mapping[str, str], limit: int = 300) -> list[dict[str, Any]]:
         clauses = ["1=1"]

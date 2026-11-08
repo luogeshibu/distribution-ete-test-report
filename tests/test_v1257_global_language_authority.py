@@ -36,4 +36,4 @@ def test_all_pages_follow_explicit_language_change_across_tabs_without_rewriting
 
 
 def test_release_version():
-    assert (ROOT / 'VERSION').read_text(encoding='utf-8').strip() == '1.2.67'
+    assert (ROOT / 'VERSION').read_text(encoding='utf-8').strip() == '1.2.69'

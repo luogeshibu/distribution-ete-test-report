@@ -1,3 +1,16 @@
+# v1.2.69 - 2026-11-08
+
+- Detect duplicate history by the full device set shown in Device Hierarchy / Device, without depending on device order.
+- Let operators continue the newest exact-match report or replace all exact-match reports before starting over; overlapping multi-device history does not block a standalone test.
+- Warn before leaving with unsaved report changes and offer to save as a draft; printing remains separate from explicit completion.
+- Reject duplicate device-set archives on the server.
+
+# v1.2.68 - 2026-11-01
+
+- Add explicit Confirm Test Complete actions on the test page and in History for saved drafts.
+- Saving, printing, and generating PDFs keep reports as drafts; only explicit confirmation marks a report Final / Completed.
+- Record the completion timestamp in the archive snapshot and report index.
+
 # v1.2.67 - 2026-11-01
 
 - Keep all PDF output watermark-free except the explicit Print / Draft action, including PDFs generated from draft history.
