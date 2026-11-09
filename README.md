@@ -1,12 +1,12 @@
 # Distribution ETE Test Report
 
-V1.2.73
+V1.2.74
 
 
-## v1.2.73 history statistics for empty overall results
+## v1.2.74 history statistics for empty overall results
 
-- History statistics exclude reports with an empty overall result by default.
-- Enable “Include blank overall results in statistics” to include them in the total and show their count. The history list remains unchanged.
+- History statistics include reports with an empty overall result by default, and those rows remain visible.
+- Clear “Include blank overall results in statistics” to exclude them from statistics and hide those rows.
 
 
 ## v1.2.72 history result totals
@@ -87,7 +87,7 @@ The current UI language is now controlled **only** by the explicit 中文 / EN b
 This release intentionally does **not** change Oracle SQL, device-search SQL, exact mouse-selected device behavior, duplicate-name handling, or read-only enforcement.
 
 ## Version
-V1.2.73
+V1.2.74
 
 ## v1.2.57 strict single-language UI
 

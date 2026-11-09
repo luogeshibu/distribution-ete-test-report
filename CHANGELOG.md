@@ -1,3 +1,7 @@
+# v1.2.74 - 2026-11-09
+
+- Include empty-overall-result reports in History statistics and rows by default.
+- Unchecking the option hides empty-overall-result rows and excludes them from statistics.
 # v1.2.73 - 2026-11-09
 
 - Exclude reports with an empty overall result from History totals by default.
@@ -492,3 +496,5 @@
 - Restore `config/report_config.json` and `config/report_config.example.json` exactly from the user-provided v1.2.13 baseline.
 - Keep `scripts/run.ps1` config-loading behavior unchanged.
 - No SQL/query logic changes.
+
+\n
