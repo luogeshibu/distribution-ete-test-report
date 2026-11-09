@@ -54,4 +54,4 @@ def test_oracle_search_and_readonly_contract_are_unchanged():
 
 
 def test_version():
-    assert (ROOT / 'VERSION').read_text(encoding='utf-8').strip() == '1.2.72'
+    assert (ROOT / 'VERSION').read_text(encoding='utf-8').strip() == '1.2.73'

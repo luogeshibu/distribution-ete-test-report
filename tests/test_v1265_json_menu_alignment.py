@@ -16,4 +16,4 @@ def test_json_menu_uses_same_header_action_box():
 
 
 def test_version_is_1265():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.72"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.73"
