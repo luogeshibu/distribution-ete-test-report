@@ -1,3 +1,19 @@
+# v1.2.79 - 2026-11-09
+
+- Keep the cover metadata identical to the standard report template.
+- Show Pass, Pass with comments, and Fail totals before the history detail table on the first content page.
+- Archive the generated summary PDF and its HTML/JSON source snapshots.
+
+# v1.2.78 - 2026-11-09
+
+- Correct History Summary PDF section numbering, move result totals to the cover, and remove the Version column from its records table.
+- Keep the standard report cover, repeated logo header, signature page, and filtered history rows.
+
+# v1.2.77 - 2026-11-09
+
+- Format the History Summary PDF with the standard report template, cover, repeated logo header, and signature page; replace signal point details with the filtered history records.
+- Archive the generated summary PDF and its HTML/JSON source snapshots.
+
 # v1.2.76 - 2026-11-09
 
 - Add a filtered History Summary PDF export with the existing report cover image, record statistics/table, and signature page.

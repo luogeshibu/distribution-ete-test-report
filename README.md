@@ -1,6 +1,23 @@
 # Distribution ETE Test Report
 
-V1.2.76
+V1.2.79
+
+
+## v1.2.79 History summary PDF layout
+
+- Keep the standard report cover unchanged and use its usual phase, date, lead, and tester fields.
+- Move Pass, Pass with comments, and Fail totals to the first content page above the history table.
+
+
+## v1.2.78 History summary PDF refinements
+
+- Correct the report section sequence, show result totals on the cover, and remove the Version column from the history table.
+
+
+## v1.2.77 History summary PDF layout
+
+- Use the same cover, repeated header branding, and final signature page as the standard report PDF.
+- Place the filtered history report list and result totals in the middle; omit signal point details.
 
 
 ## v1.2.76 History summary PDF

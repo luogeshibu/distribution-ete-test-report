@@ -991,25 +991,8 @@ class LiveDataProvider:
         )
         return {**result, "summary": summary}
 
-    def _history_summary_cover_image(self) -> str:
-        tag = re.search(
-            r'<img\b(?=[^>]*\bclass=["\'][^"\']*\bprint-cover-hero\b[^"\']*["\'])[^>]*>',
-            self.template,
-            flags=re.IGNORECASE,
-        )
-        if not tag:
-            return ""
-        source = re.search(r'\bsrc=["\']([^"\']+)["\']', tag.group(0), flags=re.IGNORECASE)
-        value = source.group(1) if source else ""
-        return value if value.startswith("data:image/") else ""
-
-    @staticmethod
-    def _history_summary_html(
-        summary: Mapping[str, Any],
-        *,
-        lang: str = "zh",
-        cover_image: str = "",
-    ) -> str:
+    def _history_summary_html(self, summary: Mapping[str, Any], *, lang: str = "zh") -> str:
+        """Render the history list inside the standard report's cover/sign-off layout."""
         is_en = str(lang).lower() == "en"
 
         def tx(zh: str, en: str) -> str:
@@ -1018,7 +1001,9 @@ class LiveDataProvider:
         def esc(value: Any) -> str:
             return html_lib.escape(str(value if value not in (None, "") else "—"))
 
-        filters = summary.get("filters") if isinstance(summary.get("filters"), Mapping) else {}
+        def esc_blank(value: Any) -> str:
+            return html_lib.escape(str(value or ""))
+
         totals = summary.get("totals") if isinstance(summary.get("totals"), Mapping) else {}
         reports = summary.get("reports") if isinstance(summary.get("reports"), list) else []
         result_names = {
@@ -1062,7 +1047,6 @@ class LiveDataProvider:
                 report.get("testers"),
                 result_text,
                 report.get("report_no"),
-                report.get("software_version"),
             )
             rows.append(
                 "<tr>"
@@ -1072,30 +1056,75 @@ class LiveDataProvider:
                 + "</tr>"
             )
         if not rows:
-            rows.append(f'<tr><td colspan="8" class="no-data">{tx("无历史记录", "No historical reports")}</td></tr>')
+            rows.append(f'<tr><td colspan="7" class="no-data">{tx("无历史记录", "No historical reports")}</td></tr>')
 
-        generated = summary.get("generated_at") or "—"
-        date_range = f"{filters.get('date_from') or '—'} ~ {filters.get('date_to') or '—'}"
-        time_range = f"{filters.get('time_from') or '—'} ~ {filters.get('time_to') or '—'}"
-        cover = f'<img class="cover-hero" src="{esc(cover_image)}" alt="">' if cover_image else ''
-        return f'''<!doctype html><html lang="{'en' if is_en else 'zh-CN'}"><head><meta charset="utf-8"><title>{tx('配网 ETE 历史测试汇总报告', 'Distribution ETE Historical Test Summary')}</title>
-<style>
-@page{{size:A4 landscape;margin:13mm;@bottom-right{{content:counter(page);font:9pt Arial;color:#687872}}}}
-*{{box-sizing:border-box}}body{{margin:0;font-family:Arial,"Microsoft YaHei",sans-serif;color:#1f302b;font-size:9pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-h1,h2,p{{margin:0}}.cover{{height:180mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;page-break-after:always;break-after:page;border:1px solid #d6e2dd;padding:10mm;background:linear-gradient(145deg,#f4faf7,#fff 62%)}}
-.cover-hero{{display:block;width:100%;max-height:45mm;object-fit:contain;margin:0 auto 7mm}}.brand{{width:100%;padding:5mm;background:#123f34;color:#fff;text-align:left;font-size:12pt;font-weight:700;letter-spacing:.02em}}
-.cover h1{{margin:10mm 0 3mm;color:#0b6b55;font-size:23pt}}.cover .subtitle{{color:#62736c;font-size:13pt}}.cover-meta{{width:78%;margin-top:10mm;border-collapse:collapse;text-align:left}}.cover-meta th,.cover-meta td{{border-bottom:1px solid #cad8d2;padding:2.5mm}}.cover-meta th{{width:28%;color:#53655e;text-align:left}}
-h2{{font-size:17pt;border-left:4px solid #0b8063;padding-left:4mm;margin:0 0 7mm}}.generated{{color:#6b7974;text-align:right;margin:-12mm 0 6mm}}
-.stats{{display:grid;grid-template-columns:repeat(5,1fr);gap:4mm;margin:0 0 8mm}}.stat{{border:1px solid #d1e0da;background:#e9f5f1;padding:5mm}}.stat span{{display:block;color:#64756e;font-size:8pt;margin-bottom:2mm}}.stat strong{{font-size:18pt;color:#123f34}}.stat.pass strong,.stat.conditional strong{{color:#0b8063}}.stat.fail strong{{color:#b42318}}
-table.records-table{{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8pt}}.records-table thead{{display:table-header-group}}.records-table tr{{break-inside:avoid;page-break-inside:avoid}}.records-table th,.records-table td{{border:1px solid #cad8d2;padding:2.3mm 1.7mm;text-align:left;vertical-align:top;overflow-wrap:anywhere}}.records-table th{{background:#e9f2ef;color:#29473d}}.records-table td.devices{{line-height:1.35}}.device{{margin-bottom:1.4mm}}.device:last-child{{margin-bottom:0}}.device small{{display:block;color:#728078;font-size:7pt}}.no-data{{text-align:center!important;padding:12mm!important;color:#6b7974}}
-.signatures{{page-break-before:always;break-before:page;height:180mm;display:flex;flex-direction:column;justify-content:center}}.signatures h2{{margin-bottom:12mm}}.sign-table{{width:100%;border-collapse:collapse;table-layout:fixed}}.sign-table th,.sign-table td{{border:1px solid #9bb5aa;padding:4mm 3mm;text-align:center;vertical-align:middle}}.sign-table thead th{{height:23mm;background:#123f34;color:#fff}}.sign-table tbody th{{width:14%;background:#e6f4ef;color:#123f34;text-align:left}}.sign-table td{{height:22mm}}.sign-table .signature td{{height:42mm}}
-</style></head><body>
-<section class="cover"><div class="brand">ADMS · Distribution Equipment</div>{cover}<h1>{tx('配网设备信号端到端测试报告', 'Distribution Equipment Signal End-to-End Test Report')}</h1><p class="subtitle">{tx('历史报表汇总', 'Historical Report Summary')}</p>
-<table class="cover-meta"><tr><th>{tx('调试日期范围', 'Test date range')}</th><td>{esc(date_range)}</td></tr><tr><th>{tx('保存时间范围', 'Saved time range')}</th><td>{esc(time_range)}</td></tr><tr><th>{tx('纳入记录', 'Reports included')}</th><td>{esc(totals.get('total', 0))}</td></tr><tr><th>{tx('生成时间', 'Generated at')}</th><td>{esc(generated)}</td></tr></table></section>
-<section class="records"><h2>{tx('历史测试记录汇总', 'Historical Test Records')}</h2><div class="generated">{tx('生成时间', 'Generated at')}：{esc(generated)}</div>
-<div class="stats"><div class="stat"><span>{tx('记录总数', 'Total reports')}</span><strong>{esc(totals.get('total', 0))}</strong></div><div class="stat pass"><span>{tx('通过', 'Pass')}</span><strong>{esc(totals.get('pass', 0))}</strong></div><div class="stat conditional"><span>{tx('通过（带备注）', 'Pass with comments')}</span><strong>{esc(totals.get('conditional', 0))}</strong></div><div class="stat fail"><span>{tx('不通过', 'Fail')}</span><strong>{esc(totals.get('fail', 0))}</strong></div><div class="stat"><span>{tx('总评为空', 'No overall result')}</span><strong>{esc(totals.get('empty', 0))}</strong></div></div>
-<table class="records-table"><colgroup><col style="width:13%"><col style="width:12%"><col style="width:23%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:16%"><col style="width:7%"></colgroup><thead><tr><th>{tx('最后保存时间', 'Last Saved')}</th><th>{tx('状态', 'Status')}</th><th>{tx('设备层级 / 设备', 'Device Hierarchy / Device')}</th><th>{tx('测试负责人', 'Test Lead')}</th><th>{tx('参测人员', 'Testers')}</th><th>{tx('总评', 'Overall Result')}</th><th>{tx('报告编号', 'Report No.')}</th><th>{tx('版本', 'Version')}</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section>
-<section class="signatures"><h2>{tx('签字', 'Signatures')}</h2><table class="sign-table"><thead><tr><th></th><th>SE-Control System</th><th><small>{tx('第二签字方', 'Second Party')}</small><br>SE-SCADA Side / SE-Dispatcher</th><th>PDC/DNV</th><th>ALF/CET/NARI</th></tr></thead><tbody><tr><th>{tx('姓名', 'Name')}</th><td></td><td></td><td></td><td></td></tr><tr class="signature"><th>{tx('签名', 'Signature')}</th><td></td><td></td><td></td><td></td></tr><tr><th>{tx('职务', 'Title')}</th><td></td><td></td><td></td><td></td></tr><tr><th>{tx('日期', 'Date')}</th><td></td><td></td><td></td><td></td></tr></tbody></table></section>
+        style_match = re.search(r"<style\b[^>]*>.*?</style>", self.template, flags=re.IGNORECASE | re.DOTALL)
+        header_match = re.search(r'<div class="print-page-header print-only"[^>]*>.*?</div>', self.template, flags=re.IGNORECASE | re.DOTALL)
+        cover_match = re.search(r'<section class="card print-only print-cover">.*?</section>', self.template, flags=re.IGNORECASE | re.DOTALL)
+        sign_match = re.search(r'<section class="card" id="sign">.*?</section>', self.template, flags=re.IGNORECASE | re.DOTALL)
+        if not all((style_match, header_match, cover_match, sign_match)):
+            raise ValueError("standard_report_print_template_incomplete")
+
+        cover_report = reports[0] if reports and isinstance(reports[0], Mapping) else {}
+        phase_code = str(cover_report.get("phase") or "").strip()
+        phase_labels = {
+            "field": tx("现场接入", "Field Integration"),
+            "commission": tx("投运验收", "Commissioning Acceptance"),
+            "regression": tx("回归复测", "Regression Retest"),
+        }
+        phase_label = phase_labels.get(phase_code, tx("（未选）", "(unset)"))
+        cover_dates = f"{cover_report.get('test_date_from') or ''} ~ {cover_report.get('test_date_to') or ''}"
+        # Retain the standard cover's original four metadata rows and styling.
+        meta = "".join((
+            f'<div><strong>{tx("测试阶段", "Phase")}:</strong> {esc(phase_label)}</div>',
+            f'<div><strong>{tx("测试日期", "Test Dates")}:</strong> {esc_blank(cover_dates)}</div>',
+            f'<div><strong>{tx("测试负责人", "Test Lead")}:</strong> {esc_blank(cover_report.get("lead"))}</div>',
+            f'<div><strong>{tx("参测人员", "Testers")}:</strong> {esc_blank(cover_report.get("testers"))}</div>',
+        ))
+        cover_html = re.sub(r'(<div class="print-meta"[^>]*>).*?(</div>)', rf'\g<1>{meta}\2', cover_match.group(0), flags=re.IGNORECASE | re.DOTALL)
+        if not is_en:
+            cover_html = re.sub(r'(<h1\b[^>]*>).*?(</h1>)', rf'\g<1>{tx("配网设备信号端到端测试报告", "Distribution Equipment Signal End-to-End Test Report")}</h1>', cover_html, flags=re.IGNORECASE | re.DOTALL)
+
+        # Keep the exact standard signature page and its brand-specific table.
+        sign_html = sign_match.group(0)
+        if is_en:
+            translations = {"签字": "Sign-off", "姓名": "Name", "签名": "Signature", "职务": "Title", "日期": "Date", "备注": "Comments"}
+        else:
+            translations = {"Sign-off": "签字", "Name": "姓名", "Signature": "签名", "Title": "职务", "Date": "日期", "Comments": "备注"}
+        for source, target in translations.items():
+            sign_html = sign_html.replace(f">{source}<", f">{target}<")
+        sign_html = re.sub(r'<div class="sign-role2-screen no-print">.*?</div>\s*<span class="print-only" id="sign-role2-print"[^>]*>.*?</span>', '<span>SE-SCADA Side</span>', sign_html, flags=re.IGNORECASE | re.DOTALL)
+        sign_html = re.sub(
+            r'(<span class="print-section-no">)4\.\s*(</span>)',
+            rf'\g<1>2. \2',
+            sign_html,
+            count=1,
+        )
+
+        table_heading = tx("1. 历史测试记录", "1. Historical Test Records")
+        result_summary = f'''<div class="history-result-summary">
+<span>{tx("通过", "Pass")}: <strong>{esc(totals.get("pass", 0))}</strong></span>
+<span>{tx("通过（带备注）", "Pass with comments")}: <strong>{esc(totals.get("conditional", 0))}</strong></span>
+<span>{tx("不通过", "Fail")}: <strong>{esc(totals.get("fail", 0))}</strong></span>
+</div>'''
+        table = f'''<section class="card" id="points-panel"><h2>{table_heading}</h2>{result_summary}
+<table class="history-summary-table"><colgroup><col style="width:14%"><col style="width:13%"><col style="width:26%"><col style="width:10%"><col style="width:10%"><col style="width:13%"><col style="width:14%"></colgroup><thead><tr><th>{tx('最后保存时间', 'Last Saved')}</th><th>{tx('状态', 'Status')}</th><th>{tx('设备层级 / 设备', 'Device Hierarchy / Device')}</th><th>{tx('测试负责人', 'Test Lead')}</th><th>{tx('参测人员', 'Testers')}</th><th>{tx('总评', 'Overall Result')}</th><th>{tx('报告编号', 'Report No.')}</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section>'''
+        footer = '<div class="print-page-footer print-only" aria-hidden="true"><span class="print-footer-time"></span><span class="print-page-number"></span></div>'
+        extra_style = '''<style>
+@page { size: A4 portrait; }
+.history-result-summary { display:flex; gap:7mm; margin:0 0 4mm; padding:2mm 3mm; border:0.25mm solid #cad8d2; background:#e8f2ee; color:#315247; font-size:8pt; break-inside:avoid; }
+.history-result-summary strong { color:#0b6e4f; font-size:10pt; }
+table.history-summary-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:7pt; }
+.history-summary-table thead { display:table-header-group; }
+.history-summary-table tr { break-inside:avoid; page-break-inside:avoid; }
+.history-summary-table th,.history-summary-table td { border:0.25mm solid #b9c9c2; padding:1.5mm 1mm; text-align:left; vertical-align:top; overflow-wrap:anywhere; }
+.history-summary-table th { background:#e8f2ee; }
+.history-summary-table td.devices { line-height:1.25; }
+.history-summary-table .device { margin-bottom:1mm; }
+.history-summary-table .device small { display:block; color:#6b7974; font-size:6pt; }
+</style>'''
+        return f'''<!doctype html><html lang="{'en' if is_en else 'zh-CN'}" class="print-auth print-final"><head><meta charset="utf-8"><title>{tx('配网 ETE 历史测试报告', 'Distribution ETE History Report')}</title>{style_match.group(0)}{extra_style}</head><body>
+<table class="print-layout"><thead><tr><td>{header_match.group(0)}</td></tr></thead><tbody><tr><td><main>{cover_html}{table}{sign_html}</main></td></tr></tbody><tfoot><tr><td>{footer}</td></tr></tfoot></table>
 </body></html>'''
 
     def export_history_summary(
@@ -1127,7 +1156,7 @@ table.records-table{{width:100%;border-collapse:collapse;table-layout:fixed;font
             "totals": {"total": len(reports), **counts},
             "reports": reports,
         }
-        html_text = self._history_summary_html(summary, lang=lang, cover_image=self._history_summary_cover_image())
+        html_text = self._history_summary_html(summary, lang=lang)
         result = self.report_store.save_summary_report(
             summary,
             html_text,
