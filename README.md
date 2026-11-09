@@ -1,7 +1,12 @@
 # Distribution ETE Test Report
 
-V1.2.74
+V1.2.75
 
+
+## v1.2.75 history saved-time filters
+
+- Add start/end saved-time filters to History. The existing date filters remain unchanged.
+- Time filters work on their own or with the test-date range, support overnight ranges, and match the report's last-saved time.
 
 ## v1.2.74 history statistics for empty overall results
 
@@ -87,7 +92,7 @@ The current UI language is now controlled **only** by the explicit 中文 / EN b
 This release intentionally does **not** change Oracle SQL, device-search SQL, exact mouse-selected device behavior, duplicate-name handling, or read-only enforcement.
 
 ## Version
-V1.2.74
+V1.2.75
 
 ## v1.2.57 strict single-language UI
 

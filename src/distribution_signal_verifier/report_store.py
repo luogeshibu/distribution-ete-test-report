@@ -681,6 +681,8 @@ class ReportStore:
         params: list[Any] = []
         date_from = _text(filters.get("date_from"))
         date_to = _text(filters.get("date_to"))
+        time_from = _text(filters.get("time_from"))
+        time_to = _text(filters.get("time_to"))
         device = _text(filters.get("device"))
         substation = _text(filters.get("substation"))
         feeder = _text(filters.get("feeder"))
@@ -693,6 +695,17 @@ class ReportStore:
         if date_to:
             clauses.append("COALESCE(r.test_date_from, '') <= ?")
             params.append(date_to)
+        saved_time = "substr(COALESCE(NULLIF(r.updated_at, ''), r.created_at), 12, 5)"
+        if time_from and time_to and time_from > time_to:
+            clauses.append(f"({saved_time} >= ? OR {saved_time} <= ?)")
+            params.extend([time_from, time_to])
+        else:
+            if time_from:
+                clauses.append(f"{saved_time} >= ?")
+                params.append(time_from)
+            if time_to:
+                clauses.append(f"{saved_time} <= ?")
+                params.append(time_to)
         if lead:
             clauses.append("UPPER(r.lead) LIKE UPPER(?)")
             params.append(f"%{lead}%")
@@ -774,6 +787,8 @@ class ReportStore:
             unique = list(newest_by_set.values())
             date_from = _text(filters.get("date_from"))
             date_to = _text(filters.get("date_to"))
+            time_from = _text(filters.get("time_from"))
+            time_to = _text(filters.get("time_to"))
             device = _text(filters.get("device")).casefold()
             substation = _text(filters.get("substation")).casefold()
             feeder = _text(filters.get("feeder")).casefold()
@@ -790,6 +805,17 @@ class ReportStore:
                     continue
                 if date_to and _text(report.get("test_date_from")) > date_to:
                     continue
+                if time_from or time_to:
+                    saved_at = _text(report.get("updated_at")) or _text(report.get("created_at"))
+                    try:
+                        saved_time = datetime.fromisoformat(saved_at.replace("Z", "+00:00")).strftime("%H:%M")
+                    except (TypeError, ValueError):
+                        continue
+                    if time_from and time_to and time_from > time_to:
+                        if saved_time < time_from and saved_time > time_to:
+                            continue
+                    elif (time_from and saved_time < time_from) or (time_to and saved_time > time_to):
+                        continue
                 if lead and lead not in _text(report.get("lead")).casefold():
                     continue
                 if verdict and _text(report.get("verdict_summary")) != verdict:

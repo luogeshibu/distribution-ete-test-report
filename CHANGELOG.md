@@ -1,3 +1,7 @@
+# v1.2.75 - 2026-11-09
+
+- Add History filters for saved time, in addition to the existing test-date range.
+- Support time-only and overnight time ranges.
 # v1.2.74 - 2026-11-09
 
 - Include empty-overall-result reports in History statistics and rows by default.
