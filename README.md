@@ -1,7 +1,12 @@
 # Distribution ETE Test Report
 
-V1.2.75
+V1.2.76
 
+
+## v1.2.76 History summary PDF
+
+- Export the currently filtered History records as a single PDF with a cover, statistics and records table, and a final signature page.
+- The exported PDF and its HTML/JSON snapshots are archived on the server.
 
 ## v1.2.75 history saved-time filters
 
@@ -92,7 +97,7 @@ The current UI language is now controlled **only** by the explicit 中文 / EN b
 This release intentionally does **not** change Oracle SQL, device-search SQL, exact mouse-selected device behavior, duplicate-name handling, or read-only enforcement.
 
 ## Version
-V1.2.75
+V1.2.76
 
 ## v1.2.57 strict single-language UI
 

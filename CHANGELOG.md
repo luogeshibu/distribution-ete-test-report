@@ -1,3 +1,8 @@
+# v1.2.76 - 2026-11-09
+
+- Add a filtered History Summary PDF export with the existing report cover image, record statistics/table, and signature page.
+- Archive the generated summary PDF and its HTML/JSON source snapshots.
+
 # v1.2.75 - 2026-11-09
 
 - Add History filters for saved time, in addition to the existing test-date range.

@@ -106,4 +106,4 @@ def test_oracle_query_path_remains_read_only_and_existing_search_functions_remai
     assert "def query_rmu_mapping(" in text
     assert "assert_oracle_read_only_sql(sql)" in text
     assert "assert_oracle_read_only_sql(sql)" in server
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.75"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "1.2.76"

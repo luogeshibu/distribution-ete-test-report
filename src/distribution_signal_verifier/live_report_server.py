@@ -991,6 +991,153 @@ class LiveDataProvider:
         )
         return {**result, "summary": summary}
 
+    def _history_summary_cover_image(self) -> str:
+        tag = re.search(
+            r'<img\b(?=[^>]*\bclass=["\'][^"\']*\bprint-cover-hero\b[^"\']*["\'])[^>]*>',
+            self.template,
+            flags=re.IGNORECASE,
+        )
+        if not tag:
+            return ""
+        source = re.search(r'\bsrc=["\']([^"\']+)["\']', tag.group(0), flags=re.IGNORECASE)
+        value = source.group(1) if source else ""
+        return value if value.startswith("data:image/") else ""
+
+    @staticmethod
+    def _history_summary_html(
+        summary: Mapping[str, Any],
+        *,
+        lang: str = "zh",
+        cover_image: str = "",
+    ) -> str:
+        is_en = str(lang).lower() == "en"
+
+        def tx(zh: str, en: str) -> str:
+            return en if is_en else zh
+
+        def esc(value: Any) -> str:
+            return html_lib.escape(str(value if value not in (None, "") else "—"))
+
+        filters = summary.get("filters") if isinstance(summary.get("filters"), Mapping) else {}
+        totals = summary.get("totals") if isinstance(summary.get("totals"), Mapping) else {}
+        reports = summary.get("reports") if isinstance(summary.get("reports"), list) else []
+        result_names = {
+            "pass": tx("通过", "Pass"),
+            "conditional": tx("通过（带备注）", "Pass with comments"),
+            "fail": tx("不通过", "Fail"),
+        }
+        status_names = {"draft": tx("草稿 / 未完成", "Draft / Incomplete"), "final": tx("正式 / 已完成", "Final / Completed")}
+
+        def device_lines(report: Mapping[str, Any]) -> str:
+            devices = report.get("devices") if isinstance(report.get("devices"), list) else []
+            values: list[str] = []
+            for device in devices:
+                if not isinstance(device, Mapping):
+                    continue
+                name = device.get("display_name") or device.get("rmu_name") or "—"
+                hierarchy = " / ".join(
+                    str(device.get(key) or "").strip()
+                    for key in ("subcontrolarea_name", "substation_name", "feeder_name")
+                    if str(device.get(key) or "").strip()
+                )
+                detail = f'<strong>{esc(name)}</strong>'
+                if hierarchy:
+                    detail += f'<small>{esc(hierarchy)}</small>'
+                values.append(f'<div class="device">{detail}</div>')
+            return "".join(values) or "—"
+
+        rows: list[str] = []
+        for report in reports:
+            if not isinstance(report, Mapping):
+                continue
+            verdict = str(report.get("verdict_summary") or "").strip()
+            result_text = result_names.get(verdict, tx("总评为空", "No overall result"))
+            status_key = "draft" if int(report.get("is_draft") or 0) else "final"
+            saved = report.get("updated_at") or report.get("created_at")
+            cells = (
+                saved,
+                status_names[status_key],
+                None,
+                report.get("lead"),
+                report.get("testers"),
+                result_text,
+                report.get("report_no"),
+                report.get("software_version"),
+            )
+            rows.append(
+                "<tr>"
+                + f"<td>{esc(cells[0])}</td><td>{esc(cells[1])}</td>"
+                + f"<td class=\"devices\">{device_lines(report)}</td>"
+                + "".join(f"<td>{esc(value)}</td>" for value in cells[3:])
+                + "</tr>"
+            )
+        if not rows:
+            rows.append(f'<tr><td colspan="8" class="no-data">{tx("无历史记录", "No historical reports")}</td></tr>')
+
+        generated = summary.get("generated_at") or "—"
+        date_range = f"{filters.get('date_from') or '—'} ~ {filters.get('date_to') or '—'}"
+        time_range = f"{filters.get('time_from') or '—'} ~ {filters.get('time_to') or '—'}"
+        cover = f'<img class="cover-hero" src="{esc(cover_image)}" alt="">' if cover_image else ''
+        return f'''<!doctype html><html lang="{'en' if is_en else 'zh-CN'}"><head><meta charset="utf-8"><title>{tx('配网 ETE 历史测试汇总报告', 'Distribution ETE Historical Test Summary')}</title>
+<style>
+@page{{size:A4 landscape;margin:13mm;@bottom-right{{content:counter(page);font:9pt Arial;color:#687872}}}}
+*{{box-sizing:border-box}}body{{margin:0;font-family:Arial,"Microsoft YaHei",sans-serif;color:#1f302b;font-size:9pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+h1,h2,p{{margin:0}}.cover{{height:180mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;page-break-after:always;break-after:page;border:1px solid #d6e2dd;padding:10mm;background:linear-gradient(145deg,#f4faf7,#fff 62%)}}
+.cover-hero{{display:block;width:100%;max-height:45mm;object-fit:contain;margin:0 auto 7mm}}.brand{{width:100%;padding:5mm;background:#123f34;color:#fff;text-align:left;font-size:12pt;font-weight:700;letter-spacing:.02em}}
+.cover h1{{margin:10mm 0 3mm;color:#0b6b55;font-size:23pt}}.cover .subtitle{{color:#62736c;font-size:13pt}}.cover-meta{{width:78%;margin-top:10mm;border-collapse:collapse;text-align:left}}.cover-meta th,.cover-meta td{{border-bottom:1px solid #cad8d2;padding:2.5mm}}.cover-meta th{{width:28%;color:#53655e;text-align:left}}
+h2{{font-size:17pt;border-left:4px solid #0b8063;padding-left:4mm;margin:0 0 7mm}}.generated{{color:#6b7974;text-align:right;margin:-12mm 0 6mm}}
+.stats{{display:grid;grid-template-columns:repeat(5,1fr);gap:4mm;margin:0 0 8mm}}.stat{{border:1px solid #d1e0da;background:#e9f5f1;padding:5mm}}.stat span{{display:block;color:#64756e;font-size:8pt;margin-bottom:2mm}}.stat strong{{font-size:18pt;color:#123f34}}.stat.pass strong,.stat.conditional strong{{color:#0b8063}}.stat.fail strong{{color:#b42318}}
+table.records-table{{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8pt}}.records-table thead{{display:table-header-group}}.records-table tr{{break-inside:avoid;page-break-inside:avoid}}.records-table th,.records-table td{{border:1px solid #cad8d2;padding:2.3mm 1.7mm;text-align:left;vertical-align:top;overflow-wrap:anywhere}}.records-table th{{background:#e9f2ef;color:#29473d}}.records-table td.devices{{line-height:1.35}}.device{{margin-bottom:1.4mm}}.device:last-child{{margin-bottom:0}}.device small{{display:block;color:#728078;font-size:7pt}}.no-data{{text-align:center!important;padding:12mm!important;color:#6b7974}}
+.signatures{{page-break-before:always;break-before:page;height:180mm;display:flex;flex-direction:column;justify-content:center}}.signatures h2{{margin-bottom:12mm}}.sign-table{{width:100%;border-collapse:collapse;table-layout:fixed}}.sign-table th,.sign-table td{{border:1px solid #9bb5aa;padding:4mm 3mm;text-align:center;vertical-align:middle}}.sign-table thead th{{height:23mm;background:#123f34;color:#fff}}.sign-table tbody th{{width:14%;background:#e6f4ef;color:#123f34;text-align:left}}.sign-table td{{height:22mm}}.sign-table .signature td{{height:42mm}}
+</style></head><body>
+<section class="cover"><div class="brand">ADMS · Distribution Equipment</div>{cover}<h1>{tx('配网设备信号端到端测试报告', 'Distribution Equipment Signal End-to-End Test Report')}</h1><p class="subtitle">{tx('历史报表汇总', 'Historical Report Summary')}</p>
+<table class="cover-meta"><tr><th>{tx('调试日期范围', 'Test date range')}</th><td>{esc(date_range)}</td></tr><tr><th>{tx('保存时间范围', 'Saved time range')}</th><td>{esc(time_range)}</td></tr><tr><th>{tx('纳入记录', 'Reports included')}</th><td>{esc(totals.get('total', 0))}</td></tr><tr><th>{tx('生成时间', 'Generated at')}</th><td>{esc(generated)}</td></tr></table></section>
+<section class="records"><h2>{tx('历史测试记录汇总', 'Historical Test Records')}</h2><div class="generated">{tx('生成时间', 'Generated at')}：{esc(generated)}</div>
+<div class="stats"><div class="stat"><span>{tx('记录总数', 'Total reports')}</span><strong>{esc(totals.get('total', 0))}</strong></div><div class="stat pass"><span>{tx('通过', 'Pass')}</span><strong>{esc(totals.get('pass', 0))}</strong></div><div class="stat conditional"><span>{tx('通过（带备注）', 'Pass with comments')}</span><strong>{esc(totals.get('conditional', 0))}</strong></div><div class="stat fail"><span>{tx('不通过', 'Fail')}</span><strong>{esc(totals.get('fail', 0))}</strong></div><div class="stat"><span>{tx('总评为空', 'No overall result')}</span><strong>{esc(totals.get('empty', 0))}</strong></div></div>
+<table class="records-table"><colgroup><col style="width:13%"><col style="width:12%"><col style="width:23%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:16%"><col style="width:7%"></colgroup><thead><tr><th>{tx('最后保存时间', 'Last Saved')}</th><th>{tx('状态', 'Status')}</th><th>{tx('设备层级 / 设备', 'Device Hierarchy / Device')}</th><th>{tx('测试负责人', 'Test Lead')}</th><th>{tx('参测人员', 'Testers')}</th><th>{tx('总评', 'Overall Result')}</th><th>{tx('报告编号', 'Report No.')}</th><th>{tx('版本', 'Version')}</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section>
+<section class="signatures"><h2>{tx('签字', 'Signatures')}</h2><table class="sign-table"><thead><tr><th></th><th>SE-Control System</th><th><small>{tx('第二签字方', 'Second Party')}</small><br>SE-SCADA Side / SE-Dispatcher</th><th>PDC/DNV</th><th>ALF/CET/NARI</th></tr></thead><tbody><tr><th>{tx('姓名', 'Name')}</th><td></td><td></td><td></td><td></td></tr><tr class="signature"><th>{tx('签名', 'Signature')}</th><td></td><td></td><td></td><td></td></tr><tr><th>{tx('职务', 'Title')}</th><td></td><td></td><td></td><td></td></tr><tr><th>{tx('日期', 'Date')}</th><td></td><td></td><td></td><td></td></tr></tbody></table></section>
+</body></html>'''
+
+    def export_history_summary(
+        self,
+        filters: Mapping[str, str],
+        *,
+        include_empty_overall: bool = True,
+        lang: str = "zh",
+    ) -> dict[str, Any]:
+        reports = self.report_store.list_reports(filters, limit=300, latest_per_device_set=True)
+        if not include_empty_overall:
+            reports = [
+                report for report in reports
+                if str(report.get("verdict_summary") or "").strip() not in {"", "—", "-"}
+            ]
+        if not reports:
+            raise ValueError("no_matching_history_reports")
+        counts = {"pass": 0, "conditional": 0, "fail": 0, "empty": 0}
+        for report in reports:
+            result = str(report.get("verdict_summary") or "").strip()
+            if result in counts:
+                counts[result] += 1
+            else:
+                counts["empty"] += 1
+        summary = {
+            "generated_at": _now(),
+            "filters": dict(filters),
+            "include_empty_overall": bool(include_empty_overall),
+            "totals": {"total": len(reports), **counts},
+            "reports": reports,
+        }
+        html_text = self._history_summary_html(summary, lang=lang, cover_image=self._history_summary_cover_image())
+        result = self.report_store.save_summary_report(
+            summary,
+            html_text,
+            software_version=_application_version(),
+            pdf_renderer=_render_pdf_with_browser,
+        )
+        if not result.get("pdf_saved"):
+            result["error_code"] = "pdf_browser_failed" if _find_print_browser() else "pdf_browser_missing"
+        return {**result, "summary": summary}
+
     def payload(self, network: str, rmu_names: Sequence[str]) -> dict[str, Any]:
         network = "main" if network not in {"main", "distribution"} else network
         # The distribution report is also used as a blank report template.
@@ -1754,6 +1901,18 @@ class ReportHandler(BaseHTTPRequestHandler):
                 filters = data.get("filters") if isinstance(data.get("filters"), Mapping) else data
                 lang = str(data.get("lang") or "zh") if isinstance(data, Mapping) else "zh"
                 result = self.provider.export_dashboard_summary(filters, lang=lang)
+                self._json(201, {"ok": True, **result})
+                return
+            if parsed.path == "/api/history/export-pdf":
+                data = self._read_json_body()
+                filters = data.get("filters") if isinstance(data.get("filters"), Mapping) else {}
+                include_empty = bool(data.get("include_empty_overall", True))
+                lang = str(data.get("lang") or "zh") if isinstance(data, Mapping) else "zh"
+                result = self.provider.export_history_summary(
+                    filters,
+                    include_empty_overall=include_empty,
+                    lang=lang,
+                )
                 self._json(201, {"ok": True, **result})
                 return
             self._send(404, "text/plain; charset=utf-8", b"Not found")
