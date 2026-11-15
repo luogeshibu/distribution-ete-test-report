@@ -12,6 +12,7 @@ import argparse
 import copy
 import hashlib
 import html as html_lib
+import io
 import json
 import logging
 import os
@@ -20,6 +21,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
+from xml.sax.saxutils import escape as xml_escape
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -149,8 +152,122 @@ def _split_names(value: str | None) -> list[str]:
     return [item.strip() for item in re.split(r"[,;\n]+", value) if item.strip()]
 
 
+def _require_single_device_selection(devices: Sequence[Any]) -> None:
+    identities: set[str] = set()
+    for device in devices:
+        if isinstance(device, Mapping):
+            value = device.get("adms_gss_fid") or device.get("combined_id") or device.get("rmu_name")
+        else:
+            value = device
+        identity = str(value or "").strip().removeprefix("fid:").casefold()
+        if identity:
+            identities.add(identity)
+    if len(identities) > 1:
+        raise ValueError("吉达版本每份报告只能测试一个环网柜。")
+
+
+def _require_single_distribution_device(snapshot: Mapping[str, Any]) -> None:
+    """Enforce the Jeddah branch rule at the report archive boundary."""
+    devices = snapshot.get("distribution_mappings")
+    if isinstance(devices, list):
+        _require_single_device_selection(devices)
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def _history_xlsx(reports: Sequence[Mapping[str, Any]], *, lang: str = "zh") -> bytes:
+    """Create a small, dependency-free XLSX workbook for filtered history rows."""
+    is_en = str(lang).lower() == "en"
+    headers = (
+        ("Last Saved", "Test Date From", "Test Date To", "Status", "Device Hierarchy / Device",
+         "Test Lead", "Testers", "Overall Result", "Comments", "Report No.", "Version")
+        if is_en else
+        ("最后保存时间", "测试日期起", "测试日期止", "状态", "设备层级 / 设备",
+         "测试负责人", "参测人员", "总评", "备注", "报告编号", "版本")
+    )
+    result_names = (
+        {"pass": "Pass", "conditional": "Pass with comments", "fail": "Fail"}
+        if is_en else
+        {"pass": "通过", "conditional": "通过（带备注）", "fail": "不通过"}
+    )
+
+    def valid_xml_text(value: Any) -> str:
+        text = str("" if value is None else value)
+        text = "".join(ch for ch in text if ch in "\t\n\r" or 0x20 <= ord(ch) <= 0xD7FF or 0xE000 <= ord(ch) <= 0xFFFD or 0x10000 <= ord(ch) <= 0x10FFFF)
+        return xml_escape(text[:32767])
+
+    def column_name(index: int) -> str:
+        result = ""
+        while index:
+            index, remainder = divmod(index - 1, 26)
+            result = chr(65 + remainder) + result
+        return result
+
+    rows: list[Sequence[Any]] = [headers]
+    for report in reports:
+        devices = report.get("devices") if isinstance(report.get("devices"), list) else []
+        device_text: list[str] = []
+        for device in devices:
+            if not isinstance(device, Mapping):
+                continue
+            name = str(device.get("display_name") or device.get("rmu_name") or "").strip()
+            hierarchy = " / ".join(
+                str(device.get(key) or "").strip()
+                for key in ("subcontrolarea_name", "substation_name", "feeder_name")
+                if str(device.get(key) or "").strip()
+            )
+            device_text.append(" — ".join(item for item in (name, hierarchy) if item))
+        verdict = str(report.get("verdict_summary") or "").strip()
+        status = "Draft / Incomplete" if int(report.get("is_draft") or 0) else "Final / Completed"
+        if not is_en:
+            status = "草稿 / 未完成" if int(report.get("is_draft") or 0) else "正式 / 已完成"
+        rows.append((
+            report.get("updated_at") or report.get("created_at") or "",
+            report.get("test_date_from") or "",
+            report.get("test_date_to") or "",
+            status,
+            "; ".join(device_text),
+            report.get("lead") or "",
+            report.get("testers") or "",
+            result_names.get(verdict, "No overall result" if is_en else "总评为空"),
+            report.get("verdict_conditions") or "",
+            report.get("report_no") or "",
+            report.get("software_version") or "",
+        ))
+
+    sheet_rows: list[str] = []
+    for row_index, values in enumerate(rows, start=1):
+        cells = []
+        for col_index, value in enumerate(values, start=1):
+            ref = f"{column_name(col_index)}{row_index}"
+            style = ' s="1"' if row_index == 1 else ""
+            cells.append(f'<c r="{ref}" t="inlineStr"{style}><is><t xml:space="preserve">{valid_xml_text(value)}</t></is></c>')
+        height = ' ht="30" customHeight="1"' if row_index == 1 else ""
+        sheet_rows.append(f'<row r="{row_index}"{height}>{"".join(cells)}</row>')
+    last_row = len(rows)
+    worksheet = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="20"/><cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="3" width="14" customWidth="1"/><col min="4" max="4" width="22" customWidth="1"/><col min="5" max="5" width="42" customWidth="1"/><col min="6" max="7" width="24" customWidth="1"/><col min="8" max="8" width="22" customWidth="1"/><col min="9" max="9" width="55" customWidth="1"/><col min="10" max="10" width="38" customWidth="1"/><col min="11" max="11" width="12" customWidth="1"/></cols><sheetData>{''.join(sheet_rows)}</sheetData><autoFilter ref="A1:K{last_row}"/></worksheet>'''
+    workbook = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="History" sheetId="1" r:id="rId1"/></sheets></workbook>'''
+    styles = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF123F34"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'''
+    content_types = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'''
+    package_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'''
+    workbook_rels = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'''
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", package_rels)
+        archive.writestr("xl/workbook.xml", workbook)
+        archive.writestr("xl/_rels/workbook.xml.rels", workbook_rels)
+        archive.writestr("xl/styles.xml", styles)
+        archive.writestr("xl/worksheets/sheet1.xml", worksheet)
+    return output.getvalue()
 
 
 def _application_root() -> Path:
@@ -307,6 +424,8 @@ class LiveDataProvider:
 
     def archive_report(self, data: Mapping[str, Any], client_ip: str = "") -> dict[str, Any]:
         # Printing and saving are progress snapshots; only explicit completion changes status.
+        snapshot = data.get("snapshot") if isinstance(data.get("snapshot"), Mapping) else data
+        _require_single_distribution_device(snapshot)
         is_draft = True
         data = dict(data, is_draft=True)
         if not is_draft and isinstance(data.get("html"), str):
@@ -419,6 +538,7 @@ class LiveDataProvider:
 
     def import_json_report(self, data: Mapping[str, Any], client_ip: str = "") -> dict[str, Any]:
         snapshot = self.normalize_import_snapshot(data)
+        _require_single_distribution_device(snapshot)
         return self.report_store.import_json_snapshot(
             snapshot,
             client_ip=client_ip,
@@ -1046,17 +1166,21 @@ class LiveDataProvider:
                 report.get("lead"),
                 report.get("testers"),
                 result_text,
+                report.get("verdict_conditions"),
                 report.get("report_no"),
             )
             rows.append(
                 "<tr>"
                 + f"<td>{esc(cells[0])}</td><td>{esc(cells[1])}</td>"
                 + f"<td class=\"devices\">{device_lines(report)}</td>"
-                + "".join(f"<td>{esc(value)}</td>" for value in cells[3:])
+                + "".join(
+                    f"<td>{esc_blank(value) if index == 6 else esc(value)}</td>"
+                    for index, value in enumerate(cells[3:], start=3)
+                )
                 + "</tr>"
             )
         if not rows:
-            rows.append(f'<tr><td colspan="7" class="no-data">{tx("无历史记录", "No historical reports")}</td></tr>')
+            rows.append(f'<tr><td colspan="8" class="no-data">{tx("无历史记录", "No historical reports")}</td></tr>')
 
         style_match = re.search(r"<style\b[^>]*>.*?</style>", self.template, flags=re.IGNORECASE | re.DOTALL)
         header_match = re.search(r'<div class="print-page-header print-only"[^>]*>.*?</div>', self.template, flags=re.IGNORECASE | re.DOTALL)
@@ -1093,7 +1217,7 @@ class LiveDataProvider:
             translations = {"Sign-off": "签字", "Name": "姓名", "Signature": "签名", "Title": "职务", "Date": "日期", "Comments": "备注"}
         for source, target in translations.items():
             sign_html = sign_html.replace(f">{source}<", f">{target}<")
-        sign_html = re.sub(r'<div class="sign-role2-screen no-print">.*?</div>\s*<span class="print-only" id="sign-role2-print"[^>]*>.*?</span>', '<span>SE-SCADA Side</span>', sign_html, flags=re.IGNORECASE | re.DOTALL)
+        sign_html = re.sub(r'<div class="sign-role2-screen no-print">.*?</div>\s*<span class="print-only" id="sign-role2-print"[^>]*>.*?</span>', '<span>SE-Dispatcher</span>', sign_html, flags=re.IGNORECASE | re.DOTALL)
         sign_html = re.sub(
             r'(<span class="print-section-no">)4\.\s*(</span>)',
             rf'\g<1>2. \2',
@@ -1108,7 +1232,7 @@ class LiveDataProvider:
 <span>{tx("不通过", "Fail")}: <strong>{esc(totals.get("fail", 0))}</strong></span>
 </div>'''
         table = f'''<section class="card" id="points-panel"><h2>{table_heading}</h2>{result_summary}
-<table class="history-summary-table"><colgroup><col style="width:14%"><col style="width:13%"><col style="width:26%"><col style="width:10%"><col style="width:10%"><col style="width:13%"><col style="width:14%"></colgroup><thead><tr><th>{tx('最后保存时间', 'Last Saved')}</th><th>{tx('状态', 'Status')}</th><th>{tx('设备层级 / 设备', 'Device Hierarchy / Device')}</th><th>{tx('测试负责人', 'Test Lead')}</th><th>{tx('参测人员', 'Testers')}</th><th>{tx('总评', 'Overall Result')}</th><th>{tx('报告编号', 'Report No.')}</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section>'''
+<table class="history-summary-table"><colgroup><col style="width:12%"><col style="width:11%"><col style="width:22%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:14%"><col style="width:12%"></colgroup><thead><tr><th>{tx('最后保存时间', 'Last Saved')}</th><th>{tx('状态', 'Status')}</th><th>{tx('设备层级 / 设备', 'Device Hierarchy / Device')}</th><th>{tx('测试负责人', 'Test Lead')}</th><th>{tx('参测人员', 'Testers')}</th><th>{tx('总评', 'Overall Result')}</th><th>{tx('备注', 'Comments')}</th><th>{tx('报告编号', 'Report No.')}</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section>'''
         footer = '<div class="print-page-footer print-only" aria-hidden="true"><span class="print-footer-time"></span><span class="print-page-number"></span></div>'
         extra_style = '''<style>
 @page { size: A4 portrait; }
@@ -1134,7 +1258,11 @@ table.history-summary-table { width:100%; border-collapse:collapse; table-layout
         include_empty_overall: bool = True,
         lang: str = "zh",
     ) -> dict[str, Any]:
-        reports = self.report_store.list_reports(filters, limit=300, latest_per_device_set=True)
+        # Keep every saved snapshot in exports, including older revisions of
+        # the same device set. The interactive History table can still show
+        # the latest device-set entry without deleting or hiding archive data
+        # from downloadable records.
+        reports = self.report_store.list_reports(filters, limit=None, latest_per_device_set=False)
         if not include_empty_overall:
             reports = [
                 report for report in reports
@@ -1166,6 +1294,25 @@ table.history-summary-table { width:100%; border-collapse:collapse; table-layout
         if not result.get("pdf_saved"):
             result["error_code"] = "pdf_browser_failed" if _find_print_browser() else "pdf_browser_missing"
         return {**result, "summary": summary}
+
+    def export_history_xlsx(
+        self,
+        filters: Mapping[str, str],
+        *,
+        include_empty_overall: bool = True,
+        lang: str = "zh",
+    ) -> bytes:
+        # Export all saved history rows matching the filters. Device-set
+        # deduplication is a presentation rule for the paginated table only.
+        reports = self.report_store.list_reports(filters, limit=None, latest_per_device_set=False)
+        if not include_empty_overall:
+            reports = [
+                report for report in reports
+                if str(report.get("verdict_summary") or "").strip() not in {"", "—", "-"}
+            ]
+        if not reports:
+            raise ValueError("no_matching_history_reports")
+        return _history_xlsx(reports, lang=lang)
 
     def payload(self, network: str, rmu_names: Sequence[str]) -> dict[str, Any]:
         network = "main" if network not in {"main", "distribution"} else network
@@ -1377,6 +1524,15 @@ def _live_script(
 
   async function openRmu(selector) {{
     const clean = String(selector || '').trim();
+    if (clean && selectedRmus.length && !selectedRmus.includes(clean)) {{
+      window.alert(liveText(
+        '吉达版本每份报告只能测试一个环网柜。请先从已选设备列表中移除当前设备，再选择另一个。',
+        'This Jeddah version allows one RMU per report. Remove the currently selected device before choosing another.'
+      ));
+      if (rmu) rmu.value = '';
+      if (suggestions) suggestions.hidden = true;
+      return;
+    }}
     const added = !!clean && !selectedRmus.includes(clean);
     if (added) selectedRmus.push(clean);
     // compatibility note: params.set('rmu', name) was the original single-select behavior.
@@ -1803,12 +1959,42 @@ class ReportHandler(BaseHTTPRequestHandler):
                 self._send_summary_file(summary_download.group(1), kind, inline=False)
                 return
             if parsed.path == "/api/reports":
-                filters = {key: values[0] for key, values in query.items() if values}
-                items = self.provider.report_store.list_reports(filters, latest_per_device_set=True)
-                self._json(200, {"ok": True, "items": items})
+                filters = {
+                    key: values[0] for key, values in query.items()
+                    if values and key not in {"page", "page_size", "include_empty_overall"}
+                }
+                try:
+                    requested_page = max(1, int(query.get("page", ["1"])[0]))
+                    page_size = max(1, min(int(query.get("page_size", ["100"])[0]), 200))
+                except (TypeError, ValueError):
+                    self._json(400, {"ok": False, "error": "invalid pagination parameters"})
+                    return
+                include_empty = query.get("include_empty_overall", ["1"])[0] != "0"
+                all_items = self.provider.report_store.list_reports(
+                    filters, limit=None, latest_per_device_set=True
+                )
+                if not include_empty:
+                    all_items = [
+                        item for item in all_items
+                        if str(item.get("verdict_summary") or "").strip() not in {"", "—", "-"}
+                    ]
+                totals = {"pass": 0, "conditional": 0, "fail": 0, "empty": 0}
+                for item in all_items:
+                    verdict = str(item.get("verdict_summary") or "").strip()
+                    totals[verdict if verdict in {"pass", "conditional", "fail"} else "empty"] += 1
+                total = len(all_items)
+                total_pages = max(1, (total + page_size - 1) // page_size)
+                page = min(requested_page, total_pages)
+                start = (page - 1) * page_size
+                items = all_items[start:start + page_size]
+                self._json(200, {
+                    "ok": True, "items": items, "total": total, "page": page,
+                    "page_size": page_size, "total_pages": total_pages, "totals": totals,
+                })
                 return
             if parsed.path == "/api/reports/device-matches":
                 devices = [str(value).strip() for value in query.get("device", []) if str(value).strip()]
+                _require_single_device_selection(devices)
                 matches = self.provider.report_store.find_reports_for_device_set(devices)
                 exclude = query.get("exclude", [""])[0]
                 if exclude:
@@ -1852,6 +2038,13 @@ class ReportHandler(BaseHTTPRequestHandler):
                     self._json(500, {"ok": False, "error": "环网柜模糊查询失败，请查看服务端日志。", "items": []})
                     return
                 self._json(200, {"ok": True, "items": items, "keyword": keyword})
+                return
+            if network == "distribution" and len(rmu_names) > 1 and parsed.path in {"/api/report", "/", "/index.html"}:
+                message = "吉达版本每份报告只能测试一个环网柜。请返回页面并只选择一个设备。"
+                if parsed.path == "/api/report":
+                    self._json(400, {"ok": False, "error": message})
+                else:
+                    self._send(400, "text/plain; charset=utf-8", message.encode("utf-8"))
                 return
             if parsed.path == "/api/report":
                 self._json(200, self.provider.payload(network, rmu_names))
@@ -1905,12 +2098,14 @@ class ReportHandler(BaseHTTPRequestHandler):
             if parsed.path in {"/api/reports/prepare-new-device-set", "/api/reports/replace-device-set"}:
                 data = self._read_json_body()
                 devices = data.get("devices") if isinstance(data.get("devices"), list) else []
+                _require_single_device_selection(devices)
                 retained = self.provider.report_store.count_reports_for_device_set(devices)
                 self._json(200, {"ok": True, "historical_versions_preserved": retained})
                 return
             if parsed.path == "/api/reports/keep-device-set":
                 data = self._read_json_body()
                 devices = data.get("devices") if isinstance(data.get("devices"), list) else []
+                _require_single_device_selection(devices)
                 keep_uuid = str(data.get("keep_report_uuid") or "")
                 retained = self.provider.report_store.validate_existing_report_for_device_set(devices, keep_uuid)
                 self._json(200, {"ok": True, "historical_versions_preserved": retained})
@@ -1943,6 +2138,24 @@ class ReportHandler(BaseHTTPRequestHandler):
                     lang=lang,
                 )
                 self._json(201, {"ok": True, **result})
+                return
+            if parsed.path == "/api/history/export-xlsx":
+                data = self._read_json_body()
+                filters = data.get("filters") if isinstance(data.get("filters"), Mapping) else {}
+                include_empty = bool(data.get("include_empty_overall", True))
+                lang = str(data.get("lang") or "zh") if isinstance(data, Mapping) else "zh"
+                workbook = self.provider.export_history_xlsx(
+                    filters,
+                    include_empty_overall=include_empty,
+                    lang=lang,
+                )
+                filename = f"ETE-History-{datetime.now().strftime('%Y%m%d-%H%M%S')}.xlsx"
+                self._send(
+                    200,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    workbook,
+                    {"Content-Disposition": f'attachment; filename="{filename}"'},
+                )
                 return
             self._send(404, "text/plain; charset=utf-8", b"Not found")
         except PdfGenerationError as exc:

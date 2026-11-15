@@ -70,7 +70,7 @@ def test_ui_replaces_json_buttons_with_server_draft_save_and_resume():
 
 
 def test_schema_version_keeps_drafts_and_dashboard_migrations():
-    assert SCHEMA_VERSION == 3
+    assert SCHEMA_VERSION == 4
 
 
 def test_v1_database_is_migrated_to_v2_without_losing_reports(tmp_path):

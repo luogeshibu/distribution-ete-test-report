@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _text(value: Any) -> str:
@@ -116,6 +116,13 @@ class ReportStore:
                     connection.execute(
                         "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                         (3, _now_local().isoformat(timespec="seconds")),
+                    )
+                    current = 3
+                if current < 4:
+                    self._migration_v4(connection, self.application_root)
+                    connection.execute(
+                        "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                        (4, _now_local().isoformat(timespec="seconds")),
                     )
                 connection.commit()
             except Exception:
@@ -238,6 +245,35 @@ class ReportStore:
             CREATE INDEX IF NOT EXISTS idx_summary_created_at ON summary_reports(created_at DESC);
             """
         )
+
+    @staticmethod
+    def _migration_v4(connection: sqlite3.Connection, application_root: Path) -> None:
+        columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(reports)").fetchall()}
+        if "verdict_conditions" not in columns:
+            connection.execute("ALTER TABLE reports ADD COLUMN verdict_conditions TEXT NOT NULL DEFAULT ''")
+
+        root = Path(application_root).resolve()
+        rows = connection.execute(
+            "SELECT report_uuid, snapshot_path FROM reports WHERE COALESCE(verdict_conditions, '')=''"
+        ).fetchall()
+        for row in rows:
+            relative = Path(str(row["snapshot_path"] or ""))
+            if not str(relative) or relative.is_absolute():
+                continue
+            snapshot_path = (root / relative).resolve()
+            if not snapshot_path.is_relative_to(root) or not snapshot_path.is_file():
+                continue
+            try:
+                snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            meta = snapshot.get("meta") if isinstance(snapshot, Mapping) else None
+            comments = _text(meta.get("verdict_conditions")) if isinstance(meta, Mapping) else ""
+            if comments:
+                connection.execute(
+                    "UPDATE reports SET verdict_conditions=? WHERE report_uuid=?",
+                    (comments, str(row["report_uuid"])),
+                )
 
     @staticmethod
     def _device_verdict_value(device_verdicts: Mapping[str, Any], device: Mapping[str, Any]) -> str:
@@ -380,7 +416,7 @@ class ReportStore:
                     """
                     UPDATE reports SET
                         report_no=?, updated_at=?, test_date_from=?, test_date_to=?,
-                        phase=?, lead=?, testers=?, adms_version=?, verdict_summary=?, is_draft=?,
+                        phase=?, lead=?, testers=?, adms_version=?, verdict_summary=?, verdict_conditions=?, is_draft=?,
                         device_count=?, software_version=?, client_ip=?, pdf_path=?, html_path=?,
                         snapshot_path=?, finalized_at=?
                     WHERE report_uuid=?
@@ -388,7 +424,8 @@ class ReportStore:
                     (
                         report_no, updated_at, _text(meta.get("date_from")), _text(meta.get("date_to")),
                         _text(meta.get("phase")), _text(meta.get("lead")), _text(meta.get("testers")),
-                        _text(meta.get("adms_version")), verdict_summary, 1 if is_draft else 0,
+                        _text(meta.get("adms_version")), verdict_summary, _text(meta.get("verdict_conditions")),
+                        1 if is_draft else 0,
                         len(devices), software_version, client_ip, relative(pdf_path) if pdf_saved else "",
                         relative(html_path), relative(snapshot_path), finalized_at, report_uuid,
                     ),
@@ -399,15 +436,16 @@ class ReportStore:
                     """
                     INSERT INTO reports(
                         report_uuid, report_no, created_at, test_date_from, test_date_to,
-                        phase, lead, testers, adms_version, verdict_summary, is_draft,
+                        phase, lead, testers, adms_version, verdict_summary, verdict_conditions, is_draft,
                         device_count, software_version, client_ip, pdf_path, html_path, snapshot_path,
                         updated_at, finalized_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         report_uuid, report_no, created_at, _text(meta.get("date_from")),
                         _text(meta.get("date_to")), _text(meta.get("phase")), _text(meta.get("lead")),
                         _text(meta.get("testers")), _text(meta.get("adms_version")), verdict_summary,
+                        _text(meta.get("verdict_conditions")),
                         1 if is_draft else 0, len(devices), software_version, client_ip,
                         relative(pdf_path) if pdf_saved else "", relative(html_path), relative(snapshot_path),
                         updated_at, finalized_at,
@@ -564,15 +602,16 @@ class ReportStore:
                 """
                 INSERT INTO reports(
                     report_uuid, report_no, created_at, test_date_from, test_date_to,
-                    phase, lead, testers, adms_version, verdict_summary, is_draft,
+                    phase, lead, testers, adms_version, verdict_summary, verdict_conditions, is_draft,
                     device_count, software_version, client_ip, pdf_path, html_path, snapshot_path,
                     updated_at, finalized_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     report_uuid, report_no, created_at, _text(meta.get("date_from")),
                     _text(meta.get("date_to")), _text(meta.get("phase")), _text(meta.get("lead")),
                     _text(meta.get("testers")), _text(meta.get("adms_version")), verdict_summary,
+                    _text(meta.get("verdict_conditions")),
                     1, len(devices), software_version, client_ip, "", "", relative_snapshot,
                     updated_at, "",
                 ),
@@ -671,7 +710,7 @@ class ReportStore:
     def list_reports(
         self,
         filters: Mapping[str, str],
-        limit: int = 300,
+        limit: int | None = 300,
         *,
         latest_per_device_set: bool = False,
     ) -> list[dict[str, Any]]:
@@ -737,9 +776,10 @@ class ReportStore:
             SELECT r.* FROM reports r
             WHERE {' AND '.join(clauses)}
             ORDER BY COALESCE(NULLIF(r.updated_at, ''), r.created_at) DESC
-            LIMIT ?
         """
-        params.append(max(1, min(int(limit), 1000)))
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(max(1, min(int(limit), 1000000)))
         connection = self._connect()
         try:
             report_rows = [dict(row) for row in connection.execute(sql, params).fetchall()]
@@ -759,7 +799,7 @@ class ReportStore:
         finally:
             connection.close()
 
-    def _list_latest_reports(self, filters: Mapping[str, str], limit: int) -> list[dict[str, Any]]:
+    def _list_latest_reports(self, filters: Mapping[str, str], limit: int | None) -> list[dict[str, Any]]:
         """Return the newest report for each exact device set without deleting archives."""
         connection = self._connect()
         try:
@@ -835,7 +875,7 @@ class ReportStore:
                 if feeder and not any(contains(item.get("feeder_name"), feeder) for item in devices):
                     continue
                 filtered.append(report)
-            return filtered[:max(1, min(int(limit), 1000))]
+            return filtered if limit is None else filtered[:max(1, min(int(limit), 1000000))]
         finally:
             connection.close()
 

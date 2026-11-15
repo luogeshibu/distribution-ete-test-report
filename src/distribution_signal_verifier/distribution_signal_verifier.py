@@ -917,7 +917,7 @@ def build_payload(
             "station": station, "st_id": area, "phase": "commission",
             "date_from": today, "date_to": today, "lead": "", "testers": "",
             "adms_version": "", "verdict": "", "verdict_conditions": "",
-            "sign_role2": "se_scada",
+            "sign_role2": "se_dispatcher",
             "channel": {"protocol": resolved_protocol, "primary": dict(channel_side), "backup": {"name": "", "port": "", "baud_rate": "", "data_bits": "", "parity": "", "stop_bits": "", "note": ""}},
         },
         "env_defaults": {f"E{index}": {"result": "", "note": ""} for index in range(1, 5)},

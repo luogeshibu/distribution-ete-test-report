@@ -51,7 +51,7 @@ def test_smart_inventory_sql_is_separate_and_scope_bound():
 
 def test_v3_inventory_cache_and_latest_final_result_survive_reopen(tmp_path):
     store = ReportStore(tmp_path)
-    assert SCHEMA_VERSION == 3
+    assert SCHEMA_VERSION == 4
     store.upsert_inventory([{
         'combined_id': 1, 'rmu_name': '22008', 'display_name': 'JED-NTH-ABS-AH321-22008',
         'rmu_type': '2L1T', 'smart_type': 'SMART', 'feeder_name': 'AH321',

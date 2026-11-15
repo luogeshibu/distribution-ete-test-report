@@ -1,3 +1,26 @@
+# v1.2.84 - 2026-11-15
+
+- Add Excel export for History using the current filters, including every matching report across all pages.
+- Keep the existing filtered History Summary PDF export unchanged and include all matching reports.
+
+# v1.2.83 - 2026-11-15
+
+- Add server-side pagination to History so all matching latest-per-device-set reports can be browsed without a 300-row cap.
+- Keep statistics based on the full filtered result set and export all matching reports in the History Summary PDF.
+
+# v1.2.82 - 2026-11-10
+
+- Default the second-party signature role to SE-Dispatcher for new reports and History Summary PDFs.
+
+# v1.2.81 - 2026-11-10
+
+- Store cover comments in the report archive and display them with the overall result in History and exported History Summary PDFs.
+- Migrate existing archived comments from JSON snapshots without deleting report data.
+
+# v1.2.80 - 2026-11-09
+
+- Restrict the Jeddah branch to one RMU per report in the selector, report page URL handling, archive API, and JSON import.
+
 # v1.2.79 - 2026-11-09
 
 - Keep the cover metadata identical to the standard report template.

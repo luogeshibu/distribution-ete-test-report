@@ -880,7 +880,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
           <span data-live-zh="">搜索数据库</span><span data-live-en="" style="display:none">Search Database</span>
         </span>
       </button>
-      
+      <p class="status" style="flex-basis:100%;margin:0"><span data-live-zh>吉达版本：每份报告只能选择并测试一个环网柜。</span><span data-live-en style="display:none">Jeddah version: each report can contain only one RMU.</span></p>
     </form>
     
   </section>
@@ -1059,7 +1059,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
   </div>
 </div>
 
-<script id="payload" type="application/json">{"station":"配网","st_id":"","generated_at":"2026-09-19T18:44:40+03:00","counts":{},"points":[],"distribution_mappings":[],"meta_defaults":{"report_id":"E2E-20260919","station":"配网","st_id":"","phase":"commission","date_from":"2026-09-19","date_to":"2026-09-19","lead":"","testers":"","adms_version":"","verdict":"","verdict_conditions":"","sign_role2":"se_scada","channel":{"protocol":"IEC-104","primary":{"name":"","port":"","baud_rate":"9600","data_bits":"8","parity":"Even","stop_bits":"1","note":""},"backup":{"name":"","port":"","baud_rate":"9600","data_bits":"8","parity":"Even","stop_bits":"1","note":""}}},"env_defaults":{"E1":{"result":"","note":""},"E2":{"result":"","note":""},"E3":{"result":"","note":""},"E4":{"result":"","note":""}},"network":"distribution","rmu_names":[]}</script>
+<script id="payload" type="application/json">{"station":"配网","st_id":"","generated_at":"2026-09-19T18:44:40+03:00","counts":{},"points":[],"distribution_mappings":[],"meta_defaults":{"report_id":"E2E-20260919","station":"配网","st_id":"","phase":"commission","date_from":"2026-09-19","date_to":"2026-09-19","lead":"","testers":"","adms_version":"","verdict":"","verdict_conditions":"","sign_role2":"se_dispatcher","channel":{"protocol":"IEC-104","primary":{"name":"","port":"","baud_rate":"9600","data_bits":"8","parity":"Even","stop_bits":"1","note":""},"backup":{"name":"","port":"","baud_rate":"9600","data_bits":"8","parity":"Even","stop_bits":"1","note":""}}},"env_defaults":{"E1":{"result":"","note":""},"E2":{"result":"","note":""},"E3":{"result":"","note":""},"E4":{"result":"","note":""}},"network":"distribution","rmu_names":[]}</script>
 <script>
 (function () {
   const RAW = JSON.parse(document.getElementById("payload").textContent);
@@ -1726,7 +1726,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
   function ensureSignRole2() {
     const v = state.meta.sign_role2;
     if (v !== "se_scada" && v !== "se_dispatcher") {
-      state.meta.sign_role2 = "se_scada";
+      state.meta.sign_role2 = "se_dispatcher";
     }
   }
 

@@ -1,6 +1,34 @@
 # Distribution ETE Test Report
 
-V1.2.79
+V1.2.84
+
+
+## v1.2.84 Filtered history Excel export
+
+- Export every matching historical report to an Excel workbook using the active filters, independent of pagination.
+- Keep the existing filtered PDF export and include every matching report.
+
+
+## v1.2.83 History pagination
+
+- Browse all matching latest-per-device-set history records with server-side pagination and overall filtered totals.
+- Let operators choose 50, 100, or 200 reports per page; export the full filtered history set.
+
+
+## v1.2.82 Second-party signature default
+
+- Set the default second-party signer to SE-Dispatcher for new reports and generated history summary PDFs.
+
+
+## v1.2.81 History report comments
+
+- Store cover comments in the archive index and show them beside each report's overall result in History and History Summary PDFs.
+- Backfill comments from existing archived JSON snapshots without removing or rewriting report files.
+
+
+## v1.2.80 Jeddah single-device reports
+
+- Allow selecting and saving only one RMU in each report on the Jeddah branch.
 
 
 ## v1.2.79 History summary PDF layout
