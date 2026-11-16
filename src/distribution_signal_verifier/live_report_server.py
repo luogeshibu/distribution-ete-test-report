@@ -18,13 +18,17 @@ import logging
 import os
 import re
 import shutil
+import secrets
+import sqlite3
 import subprocess
 import sys
 import tempfile
+import time as time_module
 import zipfile
 from xml.sax.saxutils import escape as xml_escape
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timezone
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -175,6 +179,63 @@ def _require_single_distribution_device(snapshot: Mapping[str, Any]) -> None:
 
 def _now() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def _database_id(value: Any) -> str:
+    """Normalize Oracle NUMBER identifiers without losing precision."""
+    if value is None:
+        return ""
+    try:
+        number = Decimal(str(value).strip())
+        if number == number.to_integral_value():
+            return str(int(number))
+    except (InvalidOperation, ValueError, TypeError):
+        pass
+    return str(value).strip()
+
+
+def _database_event_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min)
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        for fmt in ("%d-%b-%y %H:%M:%S", "%d-%b-%y", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(raw, fmt)
+            except ValueError:
+                continue
+    return None
+
+
+def _database_event_sort_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
+    occurred = _database_event_datetime(row.get("OCCUR_TIME"))
+    received = _database_event_datetime(row.get("RECEIVE_TIME"))
+    try:
+        occurred_ms = int(row.get("MILLI_SECOND") or 0)
+    except (TypeError, ValueError):
+        occurred_ms = 0
+    try:
+        received_ms = int(row.get("RECEIVE_MS") or 0)
+    except (TypeError, ValueError):
+        received_ms = 0
+    return (
+        occurred.timestamp() if occurred else float("-inf"),
+        occurred_ms,
+        received.timestamp() if received else float("-inf"),
+        received_ms,
+        str(row.get("UUID") or ""),
+    )
+
+
+def _database_event_time_text(row: Mapping[str, Any]) -> str:
+    event_time = _database_event_datetime(row.get("OCCUR_TIME")) or _database_event_datetime(row.get("RECEIVE_TIME"))
+    return event_time.strftime("%Y-%m-%d %H:%M:%S") if event_time else str(row.get("OCCUR_TIME") or row.get("RECEIVE_TIME") or "")
 
 
 def _history_xlsx(reports: Sequence[Mapping[str, Any]], *, lang: str = "zh") -> bytes:
@@ -416,7 +477,15 @@ class LiveDataProvider:
             if configured_print_password
             else ""
         )
+        configured_admin_password = ""
+        if isinstance(security_config, dict):
+            configured_admin_password = str(
+                security_config.get("admin_password") or configured_print_password
+            )
+        self.admin_password_hash = hashlib.sha256(configured_admin_password.encode("utf-8")).hexdigest()
         self.report_store = ReportStore(_application_root())
+        with self.report_store._connect() as connection:
+            connection.execute("CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
         history_path = config.template.parent / "history.html"
         self.history_template = history_path.read_text(encoding="utf-8") if history_path.is_file() else ""
         dashboard_path = config.template.parent / "dashboard.html"
@@ -733,6 +802,207 @@ class LiveDataProvider:
             # usable while the main-network point SQL is being connected.
             return list(self.template_payload.get("points", []))
         return []
+
+    def database_history_results(self, combined_id: Any) -> dict[str, Any]:
+        """Read prior YX/YK events for one RMU and summarize verified cycles.
+
+        This feature is intentionally read-only. Database logs are matched to
+        report addresses through the authoritative FES point definitions.
+        Analog measurements are not queried or returned.
+        """
+        identity = _database_id(combined_id)
+        if not identity or not identity.isdigit():
+            raise ValueError("A valid COMBINED_ID is required")
+        if not self.oracle_enabled:
+            raise InputError("服务端未配置 Oracle，无法读取历史遥信/遥控记录。")
+
+        queries = {
+            "yx_points": """
+                SELECT YX_ID AS POINT_ID, REFERENCE_NAME AS REPORT_ADDR, DOT_NO
+                FROM D5000.DMS_FES_YX_DEFINE
+                WHERE COMBINED_ID = :combined_id AND DOT_NO > 0
+            """,
+            "yk_points": """
+                SELECT PSID AS POINT_ID, TO_CHAR(INDEX_NO) AS REPORT_ADDR, INDEX_NO
+                FROM D5000.DMS_SEND_DC
+                WHERE COMBINED_ID = :combined_id AND INDEX_NO > 0
+            """,
+            "protection_yx": """
+                SELECT OCCUR_TIME, MILLI_SECOND, YX_ID, COMBINED_ID, STATUS,
+                       CONTENT, RECEIVE_TIME, RECEIVE_MS, UUID
+                FROM ALARM.DMS_YX_BW
+                WHERE COMBINED_ID = :combined_id
+                  AND STATUS IN (1, 2)
+                ORDER BY OCCUR_TIME, MILLI_SECOND, RECEIVE_TIME, RECEIVE_MS
+            """,
+            "alarm_yx": """
+                SELECT OCCUR_TIME, MILLI_SECOND, YX_ID, COMBINED_ID, STATUS,
+                       CONTENT, RECEIVE_TIME, RECEIVE_MS, UUID
+                FROM ALARM.DMS_RL_YX_WARN
+                WHERE COMBINED_ID = :combined_id
+                  AND STATUS IN (27, 28)
+                ORDER BY OCCUR_TIME, MILLI_SECOND, RECEIVE_TIME, RECEIVE_MS
+            """,
+            "controls": """
+                SELECT OCCUR_TIME, MEAS_ID, COMBINED_ID, STATUS, CONTENT, UUID
+                FROM ALARM.DMS_OP_CTRL
+                WHERE COMBINED_ID = :combined_id
+                  AND STATUS = 7
+                ORDER BY OCCUR_TIME
+            """,
+        }
+        for sql in queries.values():
+            assert_oracle_read_only_sql(sql)
+
+        connection = self._connection()
+        cursor = connection.cursor()
+
+        def run(name: str) -> list[dict[str, Any]]:
+            cursor.execute(queries[name], {"combined_id": identity})
+            columns = [str(description[0]).upper() for description in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        try:
+            yx_points = run("yx_points")
+            yk_points = run("yk_points")
+            protection_rows = run("protection_yx")
+            alarm_rows = run("alarm_yx")
+            control_rows = run("controls")
+        finally:
+            cursor.close()
+            connection.close()
+
+        yx_address_by_id = {
+            _database_id(row.get("POINT_ID")): str(row.get("REPORT_ADDR") or row.get("DOT_NO") or "").strip()
+            for row in yx_points
+        }
+        yk_address_by_id = {
+            _database_id(row.get("POINT_ID")): str(row.get("REPORT_ADDR") or row.get("INDEX_NO") or "").strip()
+            for row in yk_points
+        }
+
+        yx_by_id: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        seen_events: set[tuple[str, ...]] = set()
+        for source, rows in (("Protection YX", protection_rows), ("YX Alarm", alarm_rows)):
+            for row in rows:
+                point_id = _database_id(row.get("YX_ID"))
+                event_key = (
+                    str(row.get("UUID") or source), point_id,
+                    _database_id(row.get("STATUS")), str(row.get("OCCUR_TIME") or ""),
+                    str(row.get("RECEIVE_TIME") or ""), str(row.get("RECEIVE_MS") or ""),
+                    str(row.get("CONTENT") or ""),
+                )
+                if event_key in seen_events:
+                    continue
+                seen_events.add(event_key)
+                if point_id and point_id in yx_address_by_id:
+                    item = dict(row)
+                    item["_source"] = source
+                    yx_by_id.setdefault((point_id, source), []).append(item)
+
+        verified_yx_by_id: dict[str, dict[str, Any]] = {}
+        for (point_id, source), rows in yx_by_id.items():
+            rows.sort(key=_database_event_sort_key)
+            expected_statuses = {1, 2} if source == "Protection YX" else {27, 28}
+            last_status: int | None = None
+            status_counts = {status: 0 for status in expected_statuses}
+            first_success: Mapping[str, Any] | None = None
+            last_success: Mapping[str, Any] | None = None
+            sources: set[str] = set()
+            for row in rows:
+                try:
+                    status = int(row.get("STATUS"))
+                except (TypeError, ValueError):
+                    continue
+                if status not in expected_statuses:
+                    continue
+                status_counts[status] += 1
+                if last_status is None:
+                    last_status = status
+                    continue
+                if status == last_status:
+                    continue
+                # One opposite-state pair (for example 27 then 28) is one
+                # successful YX round trip. Requiring a third event would
+                # incorrectly discard points that have exactly one pair.
+                if first_success is None:
+                    first_success = row
+                last_success = row
+                sources.add(str(row.get("_source") or ""))
+                last_status = status
+            # Pair one event of each opposite state. This counts a 27/28 pair
+            # once even if one state generated duplicate notifications.
+            successful_pairs = min(status_counts.values())
+            if successful_pairs and last_success is not None:
+                first_text = _database_event_time_text(first_success or last_success)
+                last_text = _database_event_time_text(last_success)
+                current = verified_yx_by_id.get(point_id)
+                if current is None:
+                    verified_yx_by_id[point_id] = {
+                        "kind": "YX",
+                        "addr": yx_address_by_id[point_id],
+                        "count": successful_pairs,
+                        "first_success": first_text,
+                        "last_success": last_text,
+                        "source": ", ".join(sorted(sources)),
+                    }
+                else:
+                    current["count"] += successful_pairs
+                    if first_text < current["first_success"]:
+                        current["first_success"] = first_text
+                    if last_text >= current["last_success"]:
+                        current["last_success"] = last_text
+                    source_names = set(filter(None, current["source"].split(", "))) | sources
+                    current["source"] = ", ".join(sorted(source_names))
+
+        verified_yx = list(verified_yx_by_id.values())
+
+        controls_by_id: dict[str, list[dict[str, Any]]] = {}
+        for row in control_rows:
+            point_id = _database_id(row.get("MEAS_ID"))
+            if point_id and point_id in yk_address_by_id:
+                controls_by_id.setdefault(point_id, []).append(row)
+
+        verified_yk: list[dict[str, Any]] = []
+        for point_id, rows in controls_by_id.items():
+            rows.sort(key=_database_event_sort_key)
+            verified_yk.append({
+                "kind": "YK",
+                "addr": yk_address_by_id[point_id],
+                "count": len(rows),
+                "first_success": _database_event_time_text(rows[0]),
+                "last_success": _database_event_time_text(rows[-1]),
+                "source": "DMS_OP_CTRL",
+            })
+        verified_yk.sort(key=lambda row: (row["first_success"], str(row["addr"])))
+        return {
+            "combined_id": identity,
+            "results": verified_yx + verified_yk,
+            "command_order": [row["addr"] for row in verified_yk],
+            "counts": {"yx": len(verified_yx), "yk": len(verified_yk)},
+        }
+
+    def authorize_admin(self, password: Any, client_ip: str = "") -> str:
+        supplied_hash = hashlib.sha256(str(password or "").encode("utf-8")).hexdigest()
+        if not secrets.compare_digest(supplied_hash, self.admin_password_hash):
+            raise PermissionError("管理员密码错误。")
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        with self.report_store._connect() as connection:
+            connection.execute("INSERT INTO admin_sessions(token_hash) VALUES (?)", (token_hash,))
+        return token
+
+    def require_admin(self, token: str, client_ip: str = "") -> None:
+        token_hash = hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+        with self.report_store._connect() as connection:
+            row = connection.execute("SELECT 1 FROM admin_sessions WHERE token_hash = ?", (token_hash,)).fetchone()
+        if not row:
+            raise PermissionError("管理员未登录，请先登录。")
+
+    def revoke_admin(self, token: str) -> None:
+        token_hash = hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+        with self.report_store._connect() as connection:
+            connection.execute("DELETE FROM admin_sessions WHERE token_hash = ?", (token_hash,))
 
     def protocol_mappings(self, mappings: Sequence[RmuMapping]) -> list[RmuMapping]:
         if not mappings:
@@ -1833,6 +2103,20 @@ def _archive_view_html(html_text: str) -> str:
     return html_text.replace("</head>", style + "</head>", 1)
 
 
+def _with_admin_ui(html_text: str) -> str:
+    script = r'''<script id="ete-admin-ui">
+(()=>{const zh=()=>document.documentElement.lang!=='en';let authenticated=false;const fire=()=>{document.documentElement.classList.toggle('admin-authenticated',authenticated);document.querySelectorAll('[data-admin-only],.admin-only').forEach(el=>{el.hidden=!authenticated});const b=document.getElementById('btn-admin')||document.getElementById('global-admin-button');if(b){b.hidden=false;b.textContent=authenticated?(zh()?'管理员已登录 · 点击退出':'Admin signed in · Log out'):(zh()?'管理员登录':'Admin sign in')}window.dispatchEvent(new CustomEvent('ete-admin-change',{detail:{authenticated}}))};
+let button=document.getElementById('btn-admin');if(!button){const nav=document.querySelector('.topnav,.nav');if(nav){button=document.createElement('button');button.type='button';button.id='global-admin-button';button.className='nav-link';nav.appendChild(button)}}
+let overlay=document.getElementById('admin-auth-overlay');if(!overlay){overlay=document.createElement('div');overlay.id='global-admin-overlay';overlay.style.cssText='display:none;position:fixed;inset:0;background:#0008;z-index:9999;align-items:center;justify-content:center';overlay.innerHTML='<div style="background:white;padding:24px;border-radius:12px;min-width:300px;box-shadow:0 10px 40px #0004"><h3>'+ (zh()?'管理员登录':'Administrator sign in') +'</h3><input id="global-admin-password" type="password" autocomplete="current-password" style="width:100%;padding:10px"><div id="global-admin-error" style="color:#b42318;margin:8px 0"></div><div style="display:flex;justify-content:flex-end;gap:8px"><button id="global-admin-cancel">'+(zh()?'取消':'Cancel')+'</button><button id="global-admin-ok">'+(zh()?'登录':'Sign in')+'</button></div></div>';document.body.appendChild(overlay)}
+const input=overlay.querySelector('#admin-auth-input')||overlay.querySelector('#global-admin-password');const error=overlay.querySelector('#admin-auth-error')||overlay.querySelector('#global-admin-error');const ok=overlay.querySelector('#admin-auth-ok')||overlay.querySelector('#global-admin-ok');const cancel=overlay.querySelector('#admin-auth-cancel')||overlay.querySelector('#global-admin-cancel');const close=()=>{overlay.classList.remove('open');overlay.setAttribute('aria-hidden','true');overlay.style.display='none';if(input)input.value='';if(error)error.textContent=''};const open=()=>{if(error)error.textContent='';overlay.style.display='flex';overlay.classList.add('open');overlay.setAttribute('aria-hidden','false');input?.focus()};
+const api={get authenticated(){return authenticated},async refresh(){const r=await fetch('/api/admin/session',{credentials:'same-origin'});const d=await r.json();authenticated=!!d.authenticated;fire();return authenticated},async authorize(password){const r=await fetch('/api/admin/authorize',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});const d=await r.json();if(!r.ok)throw new Error(d.error|| (zh()?'密码错误':'Incorrect password'));authenticated=true;fire();return true},async logout(){await fetch('/api/admin/logout',{method:'POST',credentials:'same-origin'});authenticated=false;fire()}};window.ETE_ADMIN=api;
+button?.addEventListener('click',async()=>{if(authenticated){await api.logout()}else open()});ok?.addEventListener('click',async()=>{if(!input)return;ok.disabled=true;try{await api.authorize(input.value);close()}catch(e){if(error)error.textContent=e.message;input.focus()}finally{ok.disabled=false}});cancel?.addEventListener('click',close);input?.addEventListener('keydown',e=>{if(e.key==='Enter')ok?.click();if(e.key==='Escape')close()});api.refresh().catch(()=>{authenticated=false;fire()});
+})();</script>'''
+    if 'id="ete-admin-ui"' in html_text:
+        return html_text
+    return html_text.replace("</body>", script + "</body>", 1)
+
+
 class ReportHandler(BaseHTTPRequestHandler):
     provider: LiveDataProvider
     config: LiveConfig
@@ -1855,6 +2139,15 @@ class ReportHandler(BaseHTTPRequestHandler):
 
     def _json(self, status: int, data: Mapping[str, Any]) -> None:
         self._send(status, "application/json; charset=utf-8", json.dumps(data, ensure_ascii=False).encode("utf-8"))
+
+    def _admin_cookie_token(self) -> str:
+        from http.cookies import SimpleCookie
+        cookie = SimpleCookie()
+        try:
+            cookie.load(self.headers.get("Cookie", ""))
+            return cookie.get("admin_session").value if cookie.get("admin_session") else ""
+        except Exception:
+            return ""
 
     def _read_json_body(self, max_bytes: int = 8 * 1024 * 1024) -> Mapping[str, Any]:
         try:
@@ -1930,6 +2223,14 @@ class ReportHandler(BaseHTTPRequestHandler):
                     "time": _now(),
                 })
                 return
+            if parsed.path == "/api/admin/session":
+                try:
+                    self.provider.require_admin(self._admin_cookie_token())
+                    authenticated = True
+                except PermissionError:
+                    authenticated = False
+                self._json(200, {"ok": True, "authenticated": authenticated})
+                return
             if parsed.path == "/settings":
                 self._send(404, "text/plain; charset=utf-8", b"Oracle configuration is managed on the server.")
                 return
@@ -1937,13 +2238,13 @@ class ReportHandler(BaseHTTPRequestHandler):
                 if not self.provider.history_template:
                     self._send(404, "text/plain; charset=utf-8", b"History template not found")
                     return
-                self._send(200, "text/html; charset=utf-8", self.provider.history_template.encode("utf-8"))
+                self._send(200, "text/html; charset=utf-8", _with_admin_ui(self.provider.history_template).encode("utf-8"))
                 return
             if parsed.path == "/dashboard":
                 if not self.provider.dashboard_template:
                     self._send(404, "text/plain; charset=utf-8", b"Dashboard template not found")
                     return
-                self._send(200, "text/html; charset=utf-8", self.provider.dashboard_template.encode("utf-8"))
+                self._send(200, "text/html; charset=utf-8", _with_admin_ui(self.provider.dashboard_template).encode("utf-8"))
                 return
             if parsed.path == "/api/dashboard":
                 filters = {key: values[0] for key, values in query.items() if values}
@@ -2072,6 +2373,7 @@ class ReportHandler(BaseHTTPRequestHandler):
                 print_password_hash=self.provider.print_password_hash,
                 app_version=_application_version(),
             )
+            page = _with_admin_ui(page)
             self._send(200, "text/html; charset=utf-8", page.encode("utf-8"))
         except Exception:  # request boundary: never drop the HTTP connection silently
             LOGGER.exception("request failed path=%s", parsed.path)
@@ -2094,6 +2396,27 @@ class ReportHandler(BaseHTTPRequestHandler):
                     data, self.client_address[0] if self.client_address else ""
                 )
                 self._json(201, {"ok": True, **result})
+                return
+            if parsed.path == "/api/admin/authorize":
+                data = self._read_json_body()
+                token = self.provider.authorize_admin(
+                    data.get("password"), self.client_address[0] if self.client_address else ""
+                )
+                self._send(200, "application/json; charset=utf-8", b'{"ok":true}', {
+                    "Set-Cookie": f"admin_session={token}; Path=/; Max-Age=315360000; HttpOnly; SameSite=Strict"
+                })
+                return
+            if parsed.path == "/api/admin/logout":
+                self.provider.revoke_admin(self._admin_cookie_token())
+                self._send(200, "application/json; charset=utf-8", b'{"ok":true}', {
+                    "Set-Cookie": "admin_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"
+                })
+                return
+            if parsed.path == "/api/reports/database-history-results":
+                self.provider.require_admin(self._admin_cookie_token())
+                data = self._read_json_body()
+                result = self.provider.database_history_results(data.get("combined_id"))
+                self._json(200, {"ok": True, **result})
                 return
             if parsed.path in {"/api/reports/prepare-new-device-set", "/api/reports/replace-device-set"}:
                 data = self._read_json_body()
@@ -2158,6 +2481,8 @@ class ReportHandler(BaseHTTPRequestHandler):
                 )
                 return
             self._send(404, "text/plain; charset=utf-8", b"Not found")
+        except PermissionError as exc:
+            self._json(403, {"ok": False, "error": str(exc)})
         except PdfGenerationError as exc:
             LOGGER.warning("PDF generation failed: path=%s code=%s", parsed.path, exc.code)
             self._json(400, {"ok": False, "error": str(exc), "error_code": exc.code})

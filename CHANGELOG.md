@@ -1,3 +1,48 @@
+# v1.2.94 - 2026-11-15
+
+- Ask how to apply database history: update only signals represented by database results, or clear existing YX/YK selections/results/notes and use database results as the baseline.
+
+# v1.2.93 - 2026-11-15
+
+- Render automatically generated database-verification notes in the currently selected language, including notes already saved in Chinese.
+
+# v1.2.92 - 2026-11-15
+
+- Keep administrator login active across report, history, and dashboard pages, and across service restarts, until the user explicitly logs out.
+- Add one shared administrator session control and reusable admin-only UI state across pages.
+
+# v1.2.91 - 2026-11-15
+
+- Put administrator sign-in beside Print / PDF in the header, and show direct database controls in the RTU signal table only after sign-in.
+- Replace the extra actions dropdown and confirmation dialog with an explicit overwrite toggle and one refresh button that updates the point table and statistics immediately.
+
+# v1.2.90 - 2026-11-15
+
+- Do not treat an untouched new report or UI-only search/filter changes as unsaved work; prompt only after report data changes.
+
+# v1.2.89 - 2026-11-15
+
+- Hide database result operations behind administrator sign-in; authorize database reads on the server with a short-lived session token.
+- Keep the replacement choice off by default, identify the device in the confirmation, and state what will be replaced before applying database results.
+
+# v1.2.88 - 2026-11-15
+
+- Count one opposite-state pair as a successful YX test, so points with one 27/28 (or 1/2) pair are included without requiring a third event.
+
+# v1.2.87 - 2026-11-15
+
+- Query the accessible protection YX log `ALARM.DMS_YX_BW` instead of the unavailable `ALARM.DMS_RL_YX`; use the 1/2 return cycle for protection and 27/28 for YX alarm records.
+
+# v1.2.86 - 2026-11-15
+
+- Expose database history import under a persistent “More actions” dropdown in the report header; remove the URL flag requirement.
+
+# v1.2.85 - 2026-11-15
+
+- Add a hidden, opt-in database history import for one selected RMU: YX requires a complete 27/28/27 or 28/27/28 round trip; YK uses successful DMS_OP_CTRL events with STATUS=7.
+- Record successful counts and latest timestamps in point notes, and order control points by first successful event time. Analog points remain unchanged.
+- Add an explicit replace option for current YX/YK results; all database access remains read-only.
+
 # v1.2.84 - 2026-11-15
 
 - Add Excel export for History using the current filters, including every matching report across all pages.

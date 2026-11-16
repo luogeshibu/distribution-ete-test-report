@@ -64,6 +64,7 @@ header .sub { opacity: .9; font-size: .85rem; margin-top: .2rem; }
 .actions { display: flex; flex-wrap: wrap; gap: .45rem; }
 /* Keep the JSON top-menu trigger visually aligned with the other primary actions. */
 .data-menu { position: relative; display: inline-flex; align-items: stretch; }
+.data-menu[hidden] { display: none; }
 .app-bar .actions > button,
 .app-bar .actions > .data-menu > #btn-data-menu {
   min-width: 5rem;
@@ -99,6 +100,18 @@ header .sub { opacity: .9; font-size: .85rem; margin-top: .2rem; }
   padding: .5rem .65rem;
 }
 .data-menu-panel button:hover { background: #eef8f4; }
+.points-heading-row { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+.points-heading-row h2 { margin: 0 0 .8rem; }
+.point-admin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .3rem 0 .8rem; padding: .55rem .7rem; border: 1px solid #c7dfd4; border-radius: 7px; background: #f4faf7; }
+.point-admin-actions[hidden] { display: none; }
+.admin-entry { border: 1px solid #b9d8cb; background: #f3faf6; color: #14684f; border-radius: 6px; padding: .4rem .7rem; font-size: .78rem; white-space: nowrap; }
+.admin-replace-toggle { display: inline-flex; align-items: center; gap: .45rem; padding: .35rem .55rem; border: 1px solid #dec796; border-radius: 6px; background: #fffaf0; color: #694d13; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.admin-replace-toggle input { accent-color: #b7791f; width: 1rem; height: 1rem; }
+@media (max-width: 760px) {
+  .points-heading-row { align-items: flex-start; }
+  .points-heading-row h2 { flex: 1; }
+  .admin-entry { padding: .35rem .5rem; }
+}
 button, .btn {
   border: 1px solid transparent;
   background: #fff;
@@ -839,6 +852,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       <button type="button" class="ghost" id="btn-history" data-i18n="btnHistory">历史报表</button>
       <button type="button" class="ghost" id="btn-print-draft" data-i18n="btnPrintDraft">打印 / 草稿</button>
       <button type="button" class="ghost" id="btn-print" data-i18n="btnPrint">打印 / PDF</button>
+      <button type="button" class="ghost" id="btn-admin" data-i18n="btnAdmin">管理员登录</button>
     </div>
   </div>
 </header>
@@ -954,7 +968,9 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
   </section>
 
   <section class="card" id="points-panel">
-    <h2 class="screen-only"><span class="screen-section-no">4. </span><span data-i18n="secPoints">信号点表（全量 · 可检索勾选）</span></h2>
+    <div class="points-heading-row screen-only">
+      <h2><span class="screen-section-no">4. </span><span data-i18n="secPoints">信号点表（全量 · 可检索勾选）</span></h2>
+    </div>
     <h2 class="print-only"><span class="print-section-no">3. </span><span data-i18n="secPointsPrint">测试明细（已勾选 / 已填结果）</span></h2>
     <div class="tabs no-print" id="tabs"></div>
     <div class="toolbar no-print">
@@ -965,6 +981,10 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       <button type="button" id="btn-pass-tab" data-i18n="btnPassTab">一键全通过</button>
       <button type="button" id="btn-fail-tab" data-i18n="btnFailTab">一键全失败</button>
       <span class="hint" id="tab-count"></span>
+    </div>
+    <div class="point-admin-actions no-print" id="point-admin-actions" hidden>
+      <button type="button" class="admin-entry" id="btn-db-history-results" data-i18n="dbHistoryButton">从数据库刷新结果</button>
+      <span class="hint" data-i18n="dbHistoryAdminHint">读取后立即更新当前点表和统计；保存报告后写入历史。</span>
     </div>
     <div id="multi-rmu-points-root" class="multi-rmu-point-groups"></div>
     <div class="table-wrap" id="single-rmu-points-wrap">
@@ -1055,6 +1075,29 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     <div class="print-auth-actions">
       <button type="button" id="print-auth-cancel" data-i18n="printAuthCancel">取消</button>
       <button type="button" id="print-auth-ok" data-i18n="printAuthOk">确定</button>
+    </div>
+  </div>
+</div>
+<div class="print-auth-overlay no-print" id="db-refresh-mode-overlay" aria-hidden="true">
+  <div class="print-auth-dialog" role="dialog" aria-modal="true" aria-labelledby="db-refresh-mode-title">
+    <h3 id="db-refresh-mode-title" data-i18n="dbHistoryModeTitle">选择数据库刷新方式</h3>
+    <p data-i18n="dbHistoryModeHint">请选择如何处理当前遥信/遥控测试结果。</p>
+    <div class="print-auth-actions" style="flex-direction:column;align-items:stretch">
+      <button type="button" id="db-refresh-merge"><strong data-i18n="dbHistoryMergeTitle">只更新数据库匹配的信号</strong><br><span data-i18n="dbHistoryMergeHint">匹配信号按数据库更新；其他信号及其勾选、结果和备注保持不变。</span></button>
+      <button type="button" id="db-refresh-overwrite"><strong data-i18n="dbHistoryOverwriteTitle">按数据库结果全面覆盖</strong><br><span data-i18n="dbHistoryOverwriteHint">清空现有遥信/遥控的勾选、结果和备注，再应用数据库匹配结果。</span></button>
+      <button type="button" id="db-refresh-cancel" data-i18n="printAuthCancel">取消</button>
+    </div>
+  </div>
+</div>
+<div class="print-auth-overlay no-print" id="admin-auth-overlay" aria-hidden="true">
+  <div class="print-auth-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-auth-title">
+    <h3 id="admin-auth-title" data-i18n="adminAuthTitle">管理员验证</h3>
+    <p data-i18n="adminAuthHint">输入管理员密码登录；切换页面或重启服务后仍保持登录，直到手动退出。</p>
+    <input type="password" id="admin-auth-input" autocomplete="current-password" data-i18n-placeholder="adminAuthPlaceholder" placeholder="请输入管理员密码">
+    <div class="print-auth-error" id="admin-auth-error"></div>
+    <div class="print-auth-actions">
+      <button type="button" id="admin-auth-cancel" data-i18n="printAuthCancel">取消</button>
+      <button type="button" id="admin-auth-ok" data-i18n="adminAuthOk">验证并显示</button>
     </div>
   </div>
 </div>
@@ -1214,6 +1257,15 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       btnHistory: "历史报表",
       btnPrint: "打印 / PDF",
       btnPrintDraft: "打印 / 草稿",
+      btnAdmin: "管理员登录",
+      adminLock: "管理员已解锁 · 点击锁定",
+      adminAuthTitle: "管理员验证",
+      adminAuthHint: "输入管理员密码登录；切换页面或重启服务后仍保持登录，直到手动退出。",
+      adminAuthPlaceholder: "请输入管理员密码",
+      adminAuthOk: "验证并显示",
+      adminAuthBad: "密码错误，请重试。",
+      adminLocked: "管理员操作已隐藏",
+      adminSessionExpired: "管理员授权已过期，请重新登录。",
       printAuthTitle: "打印口令",
       printAuthPlaceholder: "请输入打印口令",
       printAuthCancel: "取消",
@@ -1290,6 +1342,19 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       filterFail: "仅失败",
       filterPass: "仅通过",
       btnSample20: "上行分层勾选约 20%",
+      dbHistoryButton: "从数据库刷新结果",
+      dbHistoryAdminHint: "点击后选择仅更新匹配信号，或按数据库结果全面覆盖。",
+      dbHistoryModeTitle: "选择数据库刷新方式",
+      dbHistoryModeHint: "请选择如何处理当前遥信/遥控测试结果。",
+      dbHistoryMergeTitle: "只更新数据库匹配的信号",
+      dbHistoryMergeHint: "匹配信号按数据库更新；其他信号及其勾选、结果和备注保持不变。",
+      dbHistoryOverwriteTitle: "按数据库结果全面覆盖",
+      dbHistoryOverwriteHint: "清空现有遥信/遥控的勾选、结果和备注，再应用数据库匹配结果。",
+      dbHistoryNoDevice: "请先打开一个环网柜。",
+      dbHistoryNoResults: "数据库中没有找到符合规则的成功记录。",
+      dbHistoryApplied: (yx, yk) => `已从数据库读取：遥信 ${yx} 点，遥控 ${yk} 点。请检查并保存报告。`,
+      dbHistoryPointNote: (count, time, source) => `数据库验证：${count} 次；最后成功：${time}${source ? `；来源：${source}` : ""}`,
+      dbHistoryFail: "读取数据库历史结果失败。",
       btnSelTab: "全选当前页签",
       btnClearTab: "清空当前页签勾选",
       btnPassTab: "一键全通过",
@@ -1389,6 +1454,15 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       btnHistory: "History",
       btnPrint: "Print / PDF",
       btnPrintDraft: "Print / Draft",
+      btnAdmin: "Admin login",
+      adminLock: "Admin unlocked · click to lock",
+      adminAuthTitle: "Administrator verification",
+      adminAuthHint: "Enter the administrator password to show database actions. Access expires after 15 minutes.",
+      adminAuthPlaceholder: "Enter administrator password",
+      adminAuthOk: "Verify and show",
+      adminAuthBad: "Incorrect password. Try again.",
+      adminLocked: "Administrator actions are hidden",
+      adminSessionExpired: "Administrator access expired. Sign in again.",
       printAuthTitle: "Print password",
       printAuthPlaceholder: "Enter print password",
       printAuthCancel: "Cancel",
@@ -1465,6 +1539,19 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
       filterFail: "Fail only",
       filterPass: "Pass only",
       btnSample20: "Select ~20% uplink (stratified)",
+      dbHistoryButton: "Refresh results from database",
+      dbHistoryAdminHint: "Choose whether to update matching points only or replace all YX/YK results with database results.",
+      dbHistoryModeTitle: "Choose database refresh mode",
+      dbHistoryModeHint: "Choose how to handle the current YX/YK test results.",
+      dbHistoryMergeTitle: "Update matching signals only",
+      dbHistoryMergeHint: "Update signals found in the database; keep all other signals, selections, results, and notes unchanged.",
+      dbHistoryOverwriteTitle: "Replace all YX/YK results from database",
+      dbHistoryOverwriteHint: "Clear current YX/YK selections, results, and notes, then apply the matching database results.",
+      dbHistoryNoDevice: "Open one RMU first.",
+      dbHistoryNoResults: "No successful records matching the rules were found in the database.",
+      dbHistoryApplied: (yx, yk) => `Database results loaded: ${yx} YX points, ${yk} control points. Review and save the report.`,
+      dbHistoryPointNote: (count, time, source) => `Database verified: ${count} success(es); last: ${time}${source ? `; source: ${source}` : ""}`,
+      dbHistoryFail: "Failed to read historical results from the database.",
       btnSelTab: "Select all in tab",
       btnClearTab: "Clear tab selection",
       btnPassTab: "Set all Pass",
@@ -1775,6 +1862,117 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     el.textContent = msg;
     el.classList.add("show");
     setTimeout(() => el.classList.remove("show"), 1800);
+  }
+
+  function databasePointKey(point) {
+    return String(point?.addr ?? point?.dot_no ?? "").trim();
+  }
+
+  function localizedPointNote(point) {
+    const note = String(point?.note || "");
+    let match = note.match(/^数据库验证：\s*(\d+)\s*次；最后成功：([^；]*)(?:；来源：(.*))?$/);
+    if (!match) match = note.match(/^Database verified:\s*(\d+) success(?:\(es\))?; last:\s*(.*?)(?:; source:\s*(.*))?$/);
+    return match ? t("dbHistoryPointNote")(Number(match[1]), match[2] || "", match[3] || "") : note;
+  }
+
+  function applyDatabaseHistoryResults(data, overwriteAll) {
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const eligible = state.points.filter((point) => point.kind === "YX" || point.kind === "YK");
+    if (overwriteAll) {
+      eligible.forEach((point) => {
+        point.selected = false;
+        point.result = "";
+        point.received = "";
+        point.note = "";
+      });
+    }
+    let appliedYx = 0;
+    let appliedYk = 0;
+    for (const result of results) {
+      const point = eligible.find((candidate) =>
+        candidate.kind === result.kind && databasePointKey(candidate) === String(result.addr ?? "").trim()
+      );
+      if (!point) continue;
+      point.selected = true;
+      point.received = true;
+      point.result = "Pass";
+      point.note = t("dbHistoryPointNote")(Number(result.count || 0), String(result.last_success || ""), String(result.source || ""));
+      if (point.kind === "YX") appliedYx += 1;
+      if (point.kind === "YK") appliedYk += 1;
+    }
+    const order = new Map((Array.isArray(data?.command_order) ? data.command_order : []).map((address, index) => [String(address).trim(), index]));
+    if (order.size) {
+      const sorted = state.points.filter((point) => point.kind === "YK").sort((a, b) => {
+        const ai = order.has(databasePointKey(a)) ? order.get(databasePointKey(a)) : Number.MAX_SAFE_INTEGER;
+        const bi = order.has(databasePointKey(b)) ? order.get(databasePointKey(b)) : Number.MAX_SAFE_INTEGER;
+        return ai - bi;
+      });
+      let index = 0;
+      state.points = state.points.map((point) => point.kind === "YK" ? sorted[index++] : point);
+    }
+    renderTabs();
+    updateStats();
+    renderTable();
+    if (typeof window.markReportDirty === "function") window.markReportDirty();
+    return {yx: appliedYx, yk: appliedYk};
+  }
+
+  function installDatabaseHistoryControl() {
+    const mapping = Array.isArray(DISTRIBUTION_RMUS) && DISTRIBUTION_RMUS.length === 1
+      ? DISTRIBUTION_RMUS[0]
+      : null;
+    const readButton = document.getElementById("btn-db-history-results");
+    const adminActions = document.getElementById("point-admin-actions");
+    const updateAdminControls = (authenticated) => {
+      if (!authenticated) {
+        if (adminActions) adminActions.hidden = true;
+      } else if (adminActions) {
+        adminActions.hidden = !mapping;
+      }
+    };
+    window.addEventListener("ete-admin-change", (event) => updateAdminControls(Boolean(event.detail?.authenticated)));
+    if (window.ETE_ADMIN) updateAdminControls(window.ETE_ADMIN.authenticated);
+    const modeOverlay = document.getElementById("db-refresh-mode-overlay");
+    const closeModeDialog = () => {
+      modeOverlay?.classList.remove("open");
+      modeOverlay?.setAttribute("aria-hidden", "true");
+    };
+    const runDatabaseRefresh = async (overwriteAll) => {
+      closeModeDialog();
+      if (!mapping?.combined_id) { toast(t("dbHistoryNoDevice")); return; }
+      readButton.disabled = true;
+      try {
+        const response = await fetch("/api/reports/database-history-results", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({combined_id: String(mapping.combined_id)}),
+        });
+        const data = await response.json();
+        if (response.status === 403) {
+          window.ETE_ADMIN?.refresh();
+          throw new Error(data.error || t("adminSessionExpired"));
+        }
+        if (!response.ok || data.ok === false) throw new Error(data.error || t("dbHistoryFail"));
+        const summary = applyDatabaseHistoryResults(data, overwriteAll);
+        if (!replaceCurrent && summary.yx + summary.yk === 0) toast(t("dbHistoryNoResults"));
+        else toast(t("dbHistoryApplied")(summary.yx, summary.yk));
+      } catch (error) {
+        console.error("database history result import failed", error);
+        toast(error.message || t("dbHistoryFail"));
+      } finally {
+        readButton.disabled = false;
+      }
+    };
+    readButton?.addEventListener("click", () => {
+      if (!mapping?.combined_id) { toast(t("dbHistoryNoDevice")); return; }
+      modeOverlay?.classList.add("open");
+      modeOverlay?.setAttribute("aria-hidden", "false");
+    });
+    document.getElementById("db-refresh-merge")?.addEventListener("click", () => runDatabaseRefresh(false));
+    document.getElementById("db-refresh-overwrite")?.addEventListener("click", () => runDatabaseRefresh(true));
+    document.getElementById("db-refresh-cancel")?.addEventListener("click", closeModeDialog);
+    modeOverlay?.addEventListener("click", (event) => { if (event.target === modeOverlay) closeModeDialog(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeModeDialog(); });
   }
 
   function persist() {
@@ -2543,7 +2741,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
         p.received === true ? t("yes") : p.received === false ? t("no") : t("dash");
       tdRecv.textContent = recvLabel;
       tdRes.textContent = p.result ? resultLabel(p.result) : t("dash");
-      tdNote.textContent = p.note || "";
+      tdNote.textContent = localizedPointNote(p);
     } else {
       const selRecv = document.createElement("select");
       selRecv.className = "compact";
@@ -2567,7 +2765,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
 
       const inNote = document.createElement("input");
       inNote.className = "compact note";
-      inNote.value = p.note || "";
+      inNote.value = localizedPointNote(p);
       inNote.addEventListener("change", () => {
         p.note = inNote.value;
         persist();
@@ -3052,6 +3250,7 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
     if (!restoredByRmuHandoff) await restoreServerDraft();
 
     applyStaticI18n();
+    installDatabaseHistoryControl();
     bindMeta();
     ensureSignRole2();
     bindSignRole2();
@@ -3425,15 +3624,15 @@ table.print-stats-table td.value-fail { color: var(--fail); font-weight: 700; }
 
     document.addEventListener("input", (event) => {
       const target = event.target;
-      if (target instanceof HTMLElement && target.id !== "distribution-rmu-input" && target.matches("input,textarea")) markReportDirty();
+      if (target instanceof HTMLElement && target.id !== "distribution-rmu-input" && !target.closest(".no-print") && target.matches("input,textarea")) markReportDirty();
     }, true);
     document.addEventListener("change", (event) => {
       const target = event.target;
-      if (target instanceof HTMLElement && target.id !== "distribution-rmu-input" && target.matches("input,select,textarea")) markReportDirty();
+      if (target instanceof HTMLElement && target.id !== "distribution-rmu-input" && !target.closest(".no-print") && target.matches("input,select,textarea")) markReportDirty();
     }, true);
-    // A freshly opened report with an RMU is meaningful unsaved work even
-    // before any signal point has been edited.
-    reportDirty = !currentReportUuid && hasSelectedDevice();
+    // A fresh page or an untouched device selection is not an unsaved report.
+    // Only actual edits (captured by the input/change handlers above) prompt on leave.
+    reportDirty = false;
 
     window.addEventListener("keydown", (ev) => {
       if ((ev.ctrlKey || ev.metaKey) && (ev.key === "p" || ev.key === "P")) {

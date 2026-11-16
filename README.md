@@ -1,6 +1,38 @@
 # Distribution ETE Test Report
 
-V1.2.84
+V1.2.94
+
+## v1.2.94 Database refresh choices
+
+- Choose between updating only signals with database results or clearing current YX/YK selections, results, and notes before applying database results.
+
+## v1.2.93 Language-aware database notes
+
+- Automatically generated database verification notes follow the selected interface language, including notes created before switching languages.
+
+## v1.2.92 Persistent administrator sign-in
+
+- Keep administrator access across report, history, and dashboard pages and application restarts, until explicit logout.
+
+## v1.2.91 Direct administrator database controls
+
+- Place administrator sign-in beside Print / PDF. After sign-in, show the overwrite toggle and database refresh button directly in the RTU signal point section.
+- Clicking refresh updates the current point table and statistics immediately. Replacement is explicit and off by default; save the report to archive the changes.
+- Configure `security.admin_password` in `report_config.json`; when omitted, the existing `security.print_password` is used.
+
+## v1.2.90 Unsaved report prompts
+
+- Do not warn when leaving an untouched new report; UI-only search and filter changes are not treated as report edits.
+
+## v1.2.85 Database-history result import
+
+- Reads prior YX and control logs for the selected RMU using its exact COMBINED_ID.
+- Protection YX (`DMS_YX_BW`) is marked successful after one 1/2 state pair; YX alarm records (`DMS_RL_YX_WARN`) require one 27/28 state pair. Control points use successful `DMS_OP_CTRL` rows with `STATUS=7`, with counts, last-success times, and chronological point ordering.
+- Operators can choose to replace current YX/control results from database records. Analog measurements are not queried or changed. Oracle access remains SELECT-only.
+
+## v1.2.86 More actions menu
+
+- The database-history import is available from the persistent “More actions” dropdown at the right side of the report toolbar; no URL flag is needed.
 
 
 ## v1.2.84 Filtered history Excel export
